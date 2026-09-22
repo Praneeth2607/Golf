@@ -96,3 +96,26 @@ export function useAdminReports() {
     queryFn: async () => (await api.get<AdminReports>("/admin/reports")).data,
   });
 }
+
+export interface AdminTrends {
+  subscriptionsByMonth: { month: string; count: number }[];
+  drawHistory: {
+    periodLabel: string;
+    prizePoolPaise: number;
+    eligibleSubscriberCount: number;
+    winnerCount: number;
+    jackpotRolledOver: boolean;
+  }[];
+  verificationFunnel: Record<"AWAITING_PROOF" | "SUBMITTED" | "APPROVED" | "REJECTED", number>;
+  payouts: {
+    pending: { count: number; amountPaise: number };
+    paid: { count: number; amountPaise: number };
+  };
+}
+
+export function useAdminTrends() {
+  return useQuery({
+    queryKey: ["admin-reports-trends"],
+    queryFn: async () => (await api.get<AdminTrends>("/admin/reports/trends")).data,
+  });
+}

@@ -4,13 +4,14 @@ import { prisma } from "../lib/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
 import { requireActiveSubscription } from "../middleware/subscription";
 import { ApiError } from "../middleware/errorHandler";
+import { stablefordScoreSchema } from "../lib/validation";
 import * as scoresService from "../services/scores";
 
 export const scoresRouter = Router();
 export const adminScoresRouter = Router();
 
 const scoreInputSchema = z.object({
-  strokes: z.coerce.number().int().min(1, "Score must be between 1 and 45").max(45, "Score must be between 1 and 45"),
+  strokes: z.coerce.number().pipe(stablefordScoreSchema),
   playedOn: z.coerce.date(),
 });
 

@@ -98,9 +98,25 @@ Building milestone-by-milestone per the PRD's development process (§25). Curren
       admin overview page (`/admin`) is a real KPI + quick-nav landing page, not a placeholder.
       Verified live: the self-role-change guard, cancelling an already-cancelled subscription
       (409), and a real cancel-then-verify round trip, all against the live database.
-- [ ] Milestone 10 — Analytics and reports (basic totals/chart now live under Milestone 9;
-      this milestone covers deeper analytics/visualizations beyond the PRD §11.E baseline)
-- [ ] Milestone 11 — Testing
+- [x] **Milestone 10 — Analytics and reports.** Extends the Milestone 9 totals with a new
+      `GET /api/admin/reports/trends` endpoint and three more charts on `/admin/reports`: prize
+      pool per draw over time, new subscriptions over the last 6 months, and a winner
+      verification funnel (colored with the app's reserved status colors — good/warning/negative
+      — never generic categorical hues, per the dataviz skill). Seed data extended with two more
+      historical published draws (fixed seeds, deterministic) purely so the trend charts have
+      more than one data point to show out of the box.
+- [x] **Milestone 11 — Testing.** 61 automated tests (`npm run test:server`), all pure-function
+      or pure-middleware unit tests — no test database is involved (see "Testing" below for why,
+      and what that trade-off means). Covers every PRD §24 category that's expressible without
+      one: money math, the score rolling-window rule, the full draw engine (number generation —
+      including a statistical bias check for algorithmic mode — matching, prize-pool/tier/
+      jackpot-rollover math), the winner-verification state machine, proof file validation, role
+      authorization middleware, and the Stableford-range/charity-minimum-percentage validation
+      rules (tested through the actual Zod schemas the routes use, not a reimplementation).
+      DB-dependent flows (registration, login, full subscription lifecycle, end-to-end score/
+      charity/draw/winner routes) were instead verified through live, scripted runs against the
+      real Supabase project at each milestone — documented inline in this README as they
+      happened, not just asserted after the fact.
 - [ ] Milestone 12 — Deployment
 
 ## Architecture
@@ -232,13 +248,14 @@ Creates (or reuses, if re-run) 6 accounts covering every subscription state, all
 Also seeds 5 demo charities (2 featured, 2 with an upcoming event), wires `active.monthly` to
 Fairway Futures (10%) and `active.yearly` to Clean Water Collective (20%) with a real
 contribution-history row each, gives `active.monthly` a full 5-score history and `active.yearly`
-a partial 3-score history, and seeds a draw config plus two draws: one already-**published**
-draw (period `2026-08`) with a real winner — `active.monthly` guaranteed to hit a 5-number match,
-so the winner/verification/payout chain has real data to look at — and one open **draft** draw
-(`2026-09`) so the admin draw UI has something to simulate/publish live in a demo. The
-2026-08 winner starts at a clean `AWAITING_PROOF` / `PENDING` state — proof upload, review, and
-payout are left for you to walk through in the demo rather than pre-seeded, since that's the
-whole point of the Milestone 7 UI.
+a partial 3-score history, and seeds a draw config plus four draws: three already-**published**
+(`2026-06`, `2026-07`, `2026-08` — fixed seeds, so re-seeding always reproduces the same
+numbers), giving the Milestone 10 trend charts more than one data point, with `2026-08`'s seed
+hand-picked to guarantee `active.monthly` a real 5-number-match win so the winner/verification/
+payout chain has real data to look at — and one open **draft** draw (`2026-09`) so the admin draw
+UI has something to simulate/publish live in a demo. The 2026-08 winner starts at a clean
+`AWAITING_PROOF` / `PENDING` state — proof upload, review, and payout are left for you to walk
+through in the demo rather than pre-seeded, since that's the whole point of the Milestone 7 UI.
 
 ### Payment provider setup
 
@@ -291,22 +308,36 @@ code.
 ## Testing
 
 ```bash
-npm run test:server
+npm run test:server   # 61 tests
 ```
 
-Currently covers `percentageOfPaise()` / `splitEqually()` (money math), `idsToEvict()` (score
-rolling-window), the draw engine's pure core (`calculateMatches`, `calculatePrizePool` /
-`calculatePrizeTiers` / `applyJackpotRollover`, `generateRandomDraw` / `generateAlgorithmicDraw`
-— including a statistical check that algorithmic mode is actually biased toward frequent
-numbers), and the winner-verification state machine (`verificationTransitions.ts`) plus proof
-file validation. Grows alongside each milestone; subscription lifecycle is next per PRD §24.
+**What's covered, automatically:** money math (`percentageOfPaise`, `splitEqually`), the score
+rolling-window rule (`idsToEvict`), the full draw engine (number generation — including a
+statistical bias check for algorithmic mode — matching, prize-pool/tier/jackpot-rollover math),
+the winner-verification state machine, proof file validation, role-authorization middleware, and
+the Stableford-range/charity-minimum-percentage rules — tested through the actual Zod schemas
+the routes import (`src/lib/validation.ts`), not a parallel reimplementation.
+
+**What isn't, and why:** anything that needs a real database (registration, login, the full
+subscription lifecycle, and the end-to-end score/charity/draw/winner HTTP routes) has no
+automated test here. This project runs against a single shared Supabase project with no local
+Postgres and no disposable test database — every DB-touching route was instead verified with
+real, scripted requests against that live project as each milestone landed (visible in this
+README's milestone notes above, e.g. the rolling-window and winner-verification live-test
+results). That's a deliberate trade-off for this project's setup, not an oversight: the honest
+next step to close it would be a dedicated test database (a second Supabase project, or dockerized
+Postgres) wired into `vitest` with per-test transaction rollback, which is a real infrastructure
+addition rather than something to fake with mocks that would just re-assert the same Prisma calls.
 
 ## Known limitations (current state)
 
-- Every milestone through 9 (auth, profiles, subscriptions, charity, scores, draws, winner
-  verification, both dashboards, admin user/subscription/reports management) is functionally
-  wired end-to-end and verified live against a real Supabase project and Storage bucket. Formal
-  automated test coverage (Milestone 11) and deployment (Milestone 12) are what's left.
+- Every milestone through 11 (auth, profiles, subscriptions, charity, scores, draws, winner
+  verification, both dashboards, admin user/subscription/reports/analytics management, testing)
+  is functionally wired end-to-end and verified live against a real Supabase project and Storage
+  bucket. Deployment (Milestone 12) is what's left.
+- Automated test coverage is pure-function/middleware only, no DB-backed integration tests — see
+  "Testing" above for the reasoning (no disposable test database in this project's setup) and
+  what closing that gap would actually take.
 - Jackpot rollover assumes draws are created and published in chronological order — a new
   draw's `jackpotRolloverInPaise` is copied from the most recently *published* draw at creation
   time. Publishing draws out of order (e.g. backfilling a skipped month) would carry the rollover

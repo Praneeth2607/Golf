@@ -8,6 +8,7 @@ import { recordAudit } from "../lib/audit";
 import { applySubscriptionEvent } from "../services/subscriptionEvents";
 import { ApiError } from "../middleware/errorHandler";
 import { env } from "../lib/env";
+import { charityPercentageSchema } from "../lib/validation";
 
 export const subscriptionsRouter = Router();
 
@@ -166,7 +167,7 @@ subscriptionsRouter.post("/cancel", requireAuth, async (req, res, next) => {
 
 const charitySelectionSchema = z.object({
   charityId: z.string().uuid(),
-  percentage: z.coerce.number().min(env.CHARITY_MIN_PERCENTAGE).max(100),
+  percentage: z.coerce.number().pipe(charityPercentageSchema(env.CHARITY_MIN_PERCENTAGE)),
 });
 
 // PATCH /api/subscriptions/charity

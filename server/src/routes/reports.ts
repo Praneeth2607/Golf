@@ -70,3 +70,72 @@ reportsRouter.get("/", async (_req, res, next) => {
     next(err);
   }
 });
+
+function monthKey(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+/** Last `months` calendar months as "YYYY-MM" keys, oldest first, always present even at 0. */
+function trailingMonthKeys(months: number): string[] {
+  const keys: string[] = [];
+  const now = new Date();
+  for (let i = months - 1; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    keys.push(monthKey(d));
+  }
+  return keys;
+}
+
+// GET /api/admin/reports/trends — Milestone 10: time-series and funnel views
+// beyond the static totals above. Kept as a separate endpoint from GET / so
+// the (cheaper, more-often-polled) top-line totals don't pay for this.
+reportsRouter.get("/trends", async (_req, res, next) => {
+  try {
+    const [subscriptions, draws, verifications, payouts] = await Promise.all([
+      prisma.subscription.findMany({ select: { createdAt: true } }),
+      prisma.draw.findMany({
+        where: { status: "PUBLISHED" },
+        orderBy: { publishedAt: "asc" },
+        select: {
+          periodLabel: true,
+          prizePoolPaise: true,
+          eligibleSubscriberCount: true,
+          jackpotRolloverOutPaise: true,
+          _count: { select: { winners: true } },
+        },
+      }),
+      prisma.winnerVerification.groupBy({ by: ["status"], _count: { _all: true } }),
+      prisma.payout.groupBy({ by: ["status"], _count: { _all: true }, _sum: { amountPaise: true } }),
+    ]);
+
+    const months = trailingMonthKeys(6);
+    const monthCounts = new Map(months.map((m) => [m, 0]));
+    for (const s of subscriptions) {
+      const key = monthKey(s.createdAt);
+      if (monthCounts.has(key)) monthCounts.set(key, (monthCounts.get(key) ?? 0) + 1);
+    }
+
+    res.json({
+      subscriptionsByMonth: months.map((m) => ({ month: m, count: monthCounts.get(m) ?? 0 })),
+      drawHistory: draws.map((d) => ({
+        periodLabel: d.periodLabel,
+        prizePoolPaise: d.prizePoolPaise ?? 0,
+        eligibleSubscriberCount: d.eligibleSubscriberCount ?? 0,
+        winnerCount: d._count.winners,
+        jackpotRolledOver: (d.jackpotRolloverOutPaise ?? 0) > 0,
+      })),
+      verificationFunnel: Object.fromEntries(
+        ["AWAITING_PROOF", "SUBMITTED", "APPROVED", "REJECTED"].map((status) => [
+          status,
+          verifications.find((v) => v.status === status)?._count._all ?? 0,
+        ])
+      ),
+      payouts: {
+        pending: { count: payouts.find((p) => p.status === "PENDING")?._count._all ?? 0, amountPaise: payouts.find((p) => p.status === "PENDING")?._sum.amountPaise ?? 0 },
+        paid: { count: payouts.find((p) => p.status === "PAID")?._count._all ?? 0, amountPaise: payouts.find((p) => p.status === "PAID")?._sum.amountPaise ?? 0 },
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});

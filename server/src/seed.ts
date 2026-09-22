@@ -286,6 +286,21 @@ async function seedDraws(adminId: string) {
     data: { method: "RANDOM", tier5PoolPct: 40, tier4PoolPct: 35, tier3PoolPct: 25, prizePoolPctOfSub: 20, isActive: true },
   });
 
+  // Two earlier published draws with fixed (arbitrary but deterministic)
+  // seeds, purely so Milestone 10's trend chart has more than one data
+  // point out of the box. Jackpot rollover chaining is intentionally not
+  // wired between these three (each created directly rather than via
+  // createDraw()) — fine for demo history, not meant to model exactly what
+  // three real consecutive months would look like.
+  for (const [period, seed] of [
+    ["2026-06", "seed-2026-06"],
+    ["2026-07", "seed-2026-07"],
+  ] as const) {
+    await deleteDrawByPeriod(period);
+    const draw = await prisma.draw.create({ data: { periodLabel: period, method: "RANDOM", status: "DRAFT" } });
+    await publishDraw(draw.id, adminId, seed);
+  }
+
   await deleteDrawByPeriod("2026-08");
   const lastMonthDraw = await prisma.draw.create({
     data: { periodLabel: "2026-08", method: "RANDOM", status: "DRAFT" },
@@ -331,7 +346,7 @@ async function main() {
 
   console.log("\nSeeding draws...");
   await seedDraws(adminId!);
-  console.log("  ✓ 1 published draw (2026-08, with a real winner) + 1 draft draw (2026-09)");
+  console.log("  ✓ 3 published draws (2026-06 to 2026-08, one with a real winner) + 1 draft draw (2026-09)");
 
   console.log(`\nAll demo accounts use the password: ${DEMO_PASSWORD}`);
 }
