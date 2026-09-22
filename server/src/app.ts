@@ -53,3 +53,11 @@ app.use("/api/admin/reports", reportsRouter);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
+
+// Vercel's native Express framework detection finds this file by the
+// conventional "app.ts" name and requires a default export specifically
+// (it ignored api/index.ts's rewrite/function config once it recognized
+// this as an Express project — see the "backend framework projects" build
+// warning). The named export above is kept for src/index.ts's own local
+// dev/traditional-host entry point.
+export default app;
