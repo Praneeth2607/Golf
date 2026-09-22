@@ -3,6 +3,8 @@ import { supabaseAdmin } from "./lib/supabase";
 import { prisma } from "./lib/prisma";
 import { percentageOfPaise } from "./lib/money";
 import { publishDraw } from "./services/draws";
+import { generateRandomDraw } from "./draw/numberGeneration";
+import { uploadProofFile } from "./lib/storage";
 
 // Demo/seed data, built up incrementally as milestones land:
 // - Milestone 2: admin account + subscriber accounts covering each
@@ -100,7 +102,18 @@ interface SeedUser {
     charityPercentage?: number;
   };
   scores?: { daysAgo: number; strokes: number }[];
+  donation?: { charitySlug: string; amountPaise: number };
 }
+
+// "complete@digitalheroes.test" is seeded through every process in the
+// product end to end: subscribed, charity + contribution, full score
+// history, won a draw, uploaded real proof, got approved, got paid, and
+// made an independent donation — one account to check the whole app against.
+// Its 5-score ticket is generated from a fixed seed and then published as
+// the draw's own winning numbers (see seedCompleteJourneyWin below), so the
+// win is guaranteed and reproducible on every re-seed, not just probable.
+const COMPLETE_JOURNEY_SEED = "seed-complete-journey-0";
+const COMPLETE_JOURNEY_TICKET = generateRandomDraw(COMPLETE_JOURNEY_SEED);
 
 const USERS: SeedUser[] = [
   { email: "admin@digitalheroes.test", fullName: "Ada Admin", role: "ADMIN" },
@@ -127,6 +140,14 @@ const USERS: SeedUser[] = [
       { daysAgo: 7, strokes: 27 },
       { daysAgo: 1, strokes: 33 },
     ],
+  },
+  {
+    email: "complete@digitalheroes.test",
+    fullName: "Cassidy Complete",
+    role: "SUBSCRIBER",
+    subscription: { plan: "MONTHLY", status: "ACTIVE", charitySlug: "second-chance-shelters", charityPercentage: 15 },
+    scores: COMPLETE_JOURNEY_TICKET.map((strokes, i) => ({ strokes, daysAgo: 25 - i * 5 })),
+    donation: { charitySlug: "greenbelt-reforestation", amountPaise: 25_000 },
   },
   {
     email: "cancelled@digitalheroes.test",
@@ -267,6 +288,61 @@ async function seedScores(userId: string, scores: NonNullable<SeedUser["scores"]
   }
 }
 
+async function seedDonation(
+  userId: string,
+  donation: NonNullable<SeedUser["donation"]>,
+  charitySlugToId: Map<string, string>
+) {
+  const charityId = charitySlugToId.get(donation.charitySlug);
+  if (!charityId) throw new Error(`Unknown charity slug in seed donation: ${donation.charitySlug}`);
+
+  await prisma.donation.deleteMany({ where: { userId } });
+  await prisma.donation.create({ data: { userId, charityId, amountPaise: donation.amountPaise } });
+}
+
+// Tiny valid 1x1 PNG — a real (if trivial) image, so "view proof" actually
+// renders something rather than pointing at a fake path.
+const DEMO_PROOF_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+  "base64"
+);
+
+/**
+ * Carries complete@digitalheroes.test's guaranteed win (see
+ * COMPLETE_JOURNEY_TICKET / the 2026-05 draw in seedDraws) the rest of the
+ * way through the PRD §13 workflow: real proof upload -> approved -> paid.
+ * Writes verification/payout rows directly rather than replaying the HTTP
+ * flow — this is seed data establishing an end state, not a test of the
+ * workflow itself (that's what the live-tested flow in Milestone 7 covers).
+ */
+async function seedCompleteJourneyWin(userId: string, adminId: string) {
+  const drawWinner = await prisma.drawWinner.findFirst({
+    where: { userId, draw: { periodLabel: "2026-05" } },
+  });
+  if (!drawWinner) {
+    throw new Error("Expected complete@digitalheroes.test to have won the 2026-05 draw — check COMPLETE_JOURNEY_TICKET/seed");
+  }
+
+  const proofPath = `${drawWinner.id}/seed-proof.png`;
+  await uploadProofFile(proofPath, DEMO_PROOF_PNG, "image/png");
+
+  const now = new Date();
+  await prisma.winnerVerification.update({
+    where: { drawWinnerId: drawWinner.id },
+    data: {
+      status: "APPROVED",
+      proofFilePath: proofPath,
+      reviewNotes: "Seed data: proof verified.",
+      reviewedById: adminId,
+      reviewedAt: now,
+    },
+  });
+  await prisma.payout.update({
+    where: { drawWinnerId: drawWinner.id },
+    data: { status: "PAID", paidById: adminId, paidAt: now },
+  });
+}
+
 async function deleteDrawByPeriod(periodLabel: string) {
   const draw = await prisma.draw.findUnique({ where: { periodLabel } });
   if (!draw) return;
@@ -286,13 +362,16 @@ async function seedDraws(adminId: string) {
     data: { method: "RANDOM", tier5PoolPct: 40, tier4PoolPct: 35, tier3PoolPct: 25, prizePoolPctOfSub: 20, isActive: true },
   });
 
-  // Two earlier published draws with fixed (arbitrary but deterministic)
-  // seeds, purely so Milestone 10's trend chart has more than one data
-  // point out of the box. Jackpot rollover chaining is intentionally not
-  // wired between these three (each created directly rather than via
-  // createDraw()) — fine for demo history, not meant to model exactly what
-  // three real consecutive months would look like.
+  // Earliest draw: guarantees complete@digitalheroes.test a FIVE-number win
+  // (their ticket was generated from this exact seed — see
+  // COMPLETE_JOURNEY_TICKET above), then three more with fixed
+  // (arbitrary but deterministic) seeds, purely so Milestone 10's trend
+  // chart has more than one data point out of the box. Jackpot rollover
+  // chaining is intentionally not wired between these (each created
+  // directly rather than via createDraw()) — fine for demo history, not
+  // meant to model exactly what real consecutive months would look like.
   for (const [period, seed] of [
+    ["2026-05", COMPLETE_JOURNEY_SEED],
     ["2026-06", "seed-2026-06"],
     ["2026-07", "seed-2026-07"],
   ] as const) {
@@ -324,10 +403,12 @@ async function main() {
   console.log(`Seeding ${USERS.length} demo accounts...\n`);
 
   let adminId: string | null = null;
+  let completeJourneyId: string | null = null;
 
   for (const user of USERS) {
     const userId = await getOrCreateAuthUser(user);
     if (user.role === "ADMIN") adminId = userId;
+    if (user.email === "complete@digitalheroes.test") completeJourneyId = userId;
 
     await prisma.profile.update({
       where: { id: userId },
@@ -340,13 +421,20 @@ async function main() {
     if (user.scores) {
       await seedScores(userId, user.scores);
     }
+    if (user.donation) {
+      await seedDonation(userId, user.donation, charitySlugToId);
+    }
 
     console.log(`  ✓ ${user.email} (${user.role}${user.subscription ? `, ${user.subscription.status}` : ""})`);
   }
 
   console.log("\nSeeding draws...");
   await seedDraws(adminId!);
-  console.log("  ✓ 3 published draws (2026-06 to 2026-08, one with a real winner) + 1 draft draw (2026-09)");
+  console.log("  ✓ 4 published draws (2026-05 to 2026-08) + 1 draft draw (2026-09)");
+
+  console.log("\nCompleting complete@digitalheroes.test's win (proof -> approved -> paid)...");
+  await seedCompleteJourneyWin(completeJourneyId!, adminId!);
+  console.log("  ✓ done");
 
   console.log(`\nAll demo accounts use the password: ${DEMO_PASSWORD}`);
 }

@@ -233,29 +233,40 @@ cd server
 npm run seed
 ```
 
-Creates (or reuses, if re-run) 6 accounts covering every subscription state, all with password
+Creates (or reuses, if re-run) 7 accounts covering every subscription state, all with password
 `Password123!`:
 
 | Email | Role | Subscription |
 |---|---|---|
 | `admin@digitalheroes.test` | Admin | — |
+| `complete@digitalheroes.test` | Subscriber | Active, monthly — **every process completed** (see below) |
 | `active.monthly@digitalheroes.test` | Subscriber | Active, monthly |
 | `active.yearly@digitalheroes.test` | Subscriber | Active, yearly |
 | `cancelled@digitalheroes.test` | Subscriber | Cancelled (at period end) |
 | `lapsed@digitalheroes.test` | Subscriber | Lapsed |
 | `nosub@digitalheroes.test` | Subscriber | None |
 
+`complete@digitalheroes.test` is the account to log into if you want everything already in a
+finished state: subscribed, charity selected (Second Chance Shelters, 15%) with a real
+contribution-history row, a full 5-score history whose numbers are generated from a fixed seed
+(`COMPLETE_JOURNEY_SEED` in `seed.ts`) and then republished as that same draw's *actual* winning
+numbers — so the win is guaranteed and reproducible on every re-seed, not just probable — real
+proof uploaded to Storage, verification **approved**, payout **paid**, and an independent
+donation made. Verified live end-to-end (subscription → charity contribution → scores → 4 draws
+entered → 1 won → proof fetchable → payout paid) before being committed.
+
 Also seeds 5 demo charities (2 featured, 2 with an upcoming event), wires `active.monthly` to
 Fairway Futures (10%) and `active.yearly` to Clean Water Collective (20%) with a real
 contribution-history row each, gives `active.monthly` a full 5-score history and `active.yearly`
-a partial 3-score history, and seeds a draw config plus four draws: three already-**published**
-(`2026-06`, `2026-07`, `2026-08` — fixed seeds, so re-seeding always reproduces the same
-numbers), giving the Milestone 10 trend charts more than one data point, with `2026-08`'s seed
-hand-picked to guarantee `active.monthly` a real 5-number-match win so the winner/verification/
-payout chain has real data to look at — and one open **draft** draw (`2026-09`) so the admin draw
-UI has something to simulate/publish live in a demo. The 2026-08 winner starts at a clean
-`AWAITING_PROOF` / `PENDING` state — proof upload, review, and payout are left for you to walk
-through in the demo rather than pre-seeded, since that's the whole point of the Milestone 7 UI.
+a partial 3-score history, and seeds a draw config plus five draws: four already-**published**
+(`2026-05` through `2026-08` — fixed seeds, so re-seeding always reproduces the same numbers),
+giving the Milestone 10 trend charts more than one data point, with `2026-08`'s seed hand-picked
+to guarantee `active.monthly` a real 5-number-match win so that winner/verification/payout chain
+has real data to look at too — and one open **draft** draw (`2026-09`) so the admin draw UI has
+something to simulate/publish live in a demo. Unlike `complete`'s win, the `active.monthly` win
+starts at a clean `AWAITING_PROOF` / `PENDING` state on purpose — proof upload, review, and
+payout are left for you to walk through yourself, since that's the whole point of the Milestone 7
+UI, and it's useful to have one account mid-process and one fully finished.
 
 ### Payment provider setup
 
