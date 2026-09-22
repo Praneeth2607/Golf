@@ -16,14 +16,22 @@ datasource db {
 // ENUMS
 // ---------------------------------------------------------------------------
 
+// Postgres enum type names are lowercase (created that way, unquoted, in
+// supabase/migrations/0001_init.sql — Postgres folds unquoted identifiers to
+// lowercase). @@map here points Prisma at the real type name; without it,
+// Prisma looks for a type literally named "Role" and fails at query time.
 enum Role {
   SUBSCRIBER
   ADMIN
+
+  @@map("role")
 }
 
 enum SubscriptionPlan {
   MONTHLY
   YEARLY
+
+  @@map("subscription_plan")
 }
 
 enum SubscriptionStatus {
@@ -32,6 +40,8 @@ enum SubscriptionStatus {
   CANCELLED
   LAPSED
   INCOMPLETE
+
+  @@map("subscription_status")
 }
 
 enum SubscriptionEventType {
@@ -40,23 +50,31 @@ enum SubscriptionEventType {
   CANCELLED
   PAYMENT_FAILED
   EXPIRED
+
+  @@map("subscription_event_type")
 }
 
 enum DrawMethod {
   RANDOM
   ALGORITHMIC
+
+  @@map("draw_method")
 }
 
 enum DrawStatus {
   DRAFT
   SIMULATED
   PUBLISHED
+
+  @@map("draw_status")
 }
 
 enum MatchTier {
   FIVE
   FOUR
   THREE
+
+  @@map("match_tier")
 }
 
 enum VerificationStatus {
@@ -64,11 +82,15 @@ enum VerificationStatus {
   SUBMITTED
   APPROVED
   REJECTED
+
+  @@map("verification_status")
 }
 
 enum PayoutStatus {
   PENDING
   PAID
+
+  @@map("payout_status")
 }
 
 // ---------------------------------------------------------------------------
@@ -115,10 +137,17 @@ model Subscription {
   currentPeriodStart   DateTime?          @map("current_period_start")
   currentPeriodEnd     DateTime?          @map("current_period_end")
   cancelAtPeriodEnd    Boolean            @default(false) @map("cancel_at_period_end")
+  // The subscriber's *current* charity choice — separate from
+  // CharityContribution, which is the immutable per-billing-period record of
+  // what was actually charged. Nullable: a subscription can be ACTIVE before
+  // the user has picked a charity (onboarding prompts them to fill this in).
+  charityId            String?            @map("charity_id") @db.Uuid
+  charityPercentage    Decimal            @default(10) @db.Decimal(5, 2) @map("charity_percentage")
   createdAt            DateTime           @default(now()) @map("created_at")
   updatedAt            DateTime           @updatedAt @map("updated_at")
 
   user                 Profile                @relation(fields: [userId], references: [id])
+  charity              Charity?               @relation(fields: [charityId], references: [id])
   events               SubscriptionEvent[]
   charityContributions CharityContribution[]
 
@@ -162,6 +191,7 @@ model Charity {
   events               CharityEvent[]
   contributions        CharityContribution[]
   donations            Donation[]
+  subscriptions        Subscription[]
 
   @@map("charities")
 }

@@ -8,3 +8,4 @@ build/
 coverage/
 client/dist/
 server/dist/
+TEST_CREDENTIALS.md

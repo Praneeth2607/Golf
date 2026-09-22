@@ -8,7 +8,10 @@ const envSchema = z.object({
   SUPABASE_URL: z.string().min(1, "SUPABASE_URL is required"),
   SUPABASE_ANON_KEY: z.string().min(1, "SUPABASE_ANON_KEY is required"),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1, "SUPABASE_SERVICE_ROLE_KEY is required"),
-  SUPABASE_JWT_SECRET: z.string().min(1, "SUPABASE_JWT_SECRET is required"),
+  // Only used for legacy (HS256) Supabase projects — newer projects sign
+  // with an asymmetric key and are verified via JWKS instead (see
+  // src/lib/jwks.ts and src/middleware/auth.ts), so this can stay unset.
+  SUPABASE_JWT_SECRET: z.string().optional(),
   SUPABASE_STORAGE_BUCKET: z.string().default("winner-proofs"),
 
   // "mock" needs no external account at all — it simulates the gateway

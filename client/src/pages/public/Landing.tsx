@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import type { Variants } from "framer-motion";
+import { useCharities } from "@/hooks/useCharities";
 
 const fadeUp: Variants = {
   hidden: { opacity: 0, y: 24 },
@@ -37,6 +38,9 @@ const impactStats = [
 ];
 
 export default function Landing() {
+  const { data: featured } = useCharities({ featured: true });
+  const spotlight = featured?.[0];
+
   return (
     <div>
       {/* HERO */}
@@ -192,6 +196,31 @@ export default function Landing() {
           </motion.div>
         </div>
       </section>
+
+      {/* FEATURED CHARITY SPOTLIGHT */}
+      {spotlight && (
+        <section className="mx-auto max-w-6xl px-5 py-24 sm:px-8">
+          <motion.div
+            initial="hidden"
+            whileInView="show"
+            viewport={{ once: true, margin: "-80px" }}
+            variants={fadeUp}
+            className="grid gap-8 rounded-2xl border border-line bg-canvas-soft/50 p-8 sm:p-10 md:grid-cols-[1fr_auto] md:items-center"
+          >
+            <div>
+              <p className="text-sm uppercase tracking-[0.2em] text-ink-deep/70">This month's featured charity</p>
+              <h2 className="mt-3 text-2xl sm:text-3xl">{spotlight.name}</h2>
+              <p className="mt-3 max-w-xl text-body">{spotlight.summary}</p>
+            </div>
+            <Link
+              to={`/charities/${spotlight.slug}`}
+              className="shrink-0 rounded-full bg-wise-green px-6 py-3 text-center text-sm font-medium text-ink-deep transition hover:bg-green-active"
+            >
+              Meet {spotlight.name}
+            </Link>
+          </motion.div>
+        </section>
+      )}
 
       {/* FINAL CTA */}
       <section className="mx-auto max-w-6xl px-5 py-24 text-center sm:px-8">

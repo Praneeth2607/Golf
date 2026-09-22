@@ -1,6 +1,7 @@
-import { SubscriptionEventType, SubscriptionStatus } from "@prisma/client";
+import { Prisma, SubscriptionEventType, SubscriptionStatus } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { recordAudit } from "../lib/audit";
+import { percentageOfPaise } from "../lib/money";
 import type { NormalizedEventType } from "../lib/payments";
 
 const EVENT_TYPE_MAP: Record<NormalizedEventType, SubscriptionEventType> = {
@@ -53,13 +54,16 @@ export async function applySubscriptionEvent(params: ApplyParams): Promise<
     return { outcome: "duplicate" };
   }
 
-  await prisma.$transaction([
+  const periodStart = params.currentPeriodStart ?? subscription.currentPeriodStart;
+  const periodEnd = params.currentPeriodEnd ?? subscription.currentPeriodEnd;
+
+  const operations: Prisma.PrismaPromise<unknown>[] = [
     prisma.subscription.update({
       where: { id: subscription.id },
       data: {
         status: STATUS_MAP[params.type],
-        currentPeriodStart: params.currentPeriodStart ?? subscription.currentPeriodStart,
-        currentPeriodEnd: params.currentPeriodEnd ?? subscription.currentPeriodEnd,
+        currentPeriodStart: periodStart,
+        currentPeriodEnd: periodEnd,
         cancelAtPeriodEnd: params.type === "CANCELLED" ? false : subscription.cancelAtPeriodEnd,
       },
     }),
@@ -71,7 +75,33 @@ export async function applySubscriptionEvent(params: ApplyParams): Promise<
         metadata: params.raw as never,
       },
     }),
-  ]);
+  ];
+
+  // A charge (first activation or renewal) that actually moves money is the
+  // moment the charity's share becomes a real, traceable transaction — not
+  // when the user merely picks a charity. Skipped if no charity has been
+  // chosen yet; the user can still set one later and it'll apply from their
+  // next charge onward.
+  const isChargeEvent = params.type === "ACTIVATED" || params.type === "CHARGED";
+  if (isChargeEvent && subscription.charityId && periodStart) {
+    operations.push(
+      prisma.charityContribution.upsert({
+        where: { subscriptionId_periodStart: { subscriptionId: subscription.id, periodStart } },
+        create: {
+          userId: subscription.userId,
+          subscriptionId: subscription.id,
+          charityId: subscription.charityId,
+          percentage: subscription.charityPercentage,
+          amountPaise: percentageOfPaise(subscription.amountPaise, subscription.charityPercentage.toString()),
+          periodStart,
+          periodEnd: periodEnd ?? periodStart,
+        },
+        update: {}, // idempotent: a duplicate event for the same period changes nothing
+      })
+    );
+  }
+
+  await prisma.$transaction(operations);
 
   await recordAudit({
     action: `SUBSCRIPTION_${params.type}`,

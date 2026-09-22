@@ -63,3 +63,44 @@ authRouter.get("/me", requireAuth, async (req, res, next) => {
     next(err);
   }
 });
+
+const updateProfileSchema = z.object({
+  fullName: z.string().min(1).max(120).optional(),
+  avatarUrl: z.string().url().nullable().optional(),
+});
+
+// PATCH /api/auth/me
+// Self-service profile edits only (name, avatar URL). Email and role are
+// intentionally not editable here: email changes go through Supabase Auth's
+// own re-verification flow, and role is never client-settable — an admin
+// changing someone's role is a Milestone 9 (admin user management) action,
+// audited separately from this self-edit endpoint.
+authRouter.patch("/me", requireAuth, async (req, res, next) => {
+  try {
+    const body = updateProfileSchema.parse(req.body);
+
+    const profile = await prisma.profile.update({
+      where: { id: req.user!.id },
+      data: {
+        ...(body.fullName !== undefined ? { fullName: body.fullName } : {}),
+        ...(body.avatarUrl !== undefined ? { avatarUrl: body.avatarUrl } : {}),
+      },
+      include: {
+        subscriptions: { orderBy: { createdAt: "desc" }, take: 1 },
+      },
+    });
+
+    await recordAudit({
+      actorId: req.user!.id,
+      actorRole: req.user!.role,
+      action: "PROFILE_UPDATED",
+      entityType: "profile",
+      entityId: req.user!.id,
+      metadata: body,
+    });
+
+    res.json({ profile });
+  } catch (err) {
+    next(err);
+  }
+});

@@ -24,7 +24,8 @@ export default function Login() {
       return;
     }
     await refreshProfile();
-    navigate("/dashboard");
+    const role = useAuthStore.getState().profile?.role;
+    navigate(role === "ADMIN" ? "/admin" : "/dashboard");
   }
 
   return (

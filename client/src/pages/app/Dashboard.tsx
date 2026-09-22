@@ -1,5 +1,9 @@
 import type { ReactNode } from "react";
+import { Link } from "react-router-dom";
 import { useAuthStore } from "@/store/authStore";
+import { useSubscriptionStatus, useContributions } from "@/hooks/useSubscription";
+import { useScores } from "@/hooks/useScores";
+import { formatPaise } from "@/lib/money";
 
 function Card({ title, children, accent = false }: { title: string; children: ReactNode; accent?: boolean }) {
   return (
@@ -13,6 +17,9 @@ function Card({ title, children, accent = false }: { title: string; children: Re
 export default function Dashboard() {
   const profile = useAuthStore((s) => s.profile);
   const subscription = profile?.subscriptions?.[0];
+  const { data: subscriptionDetail } = useSubscriptionStatus();
+  const { data: contributions } = useContributions();
+  const { data: scores } = useScores();
 
   return (
     <div className="mx-auto max-w-5xl px-5 py-10 sm:px-8">
@@ -47,13 +54,47 @@ export default function Dashboard() {
         </Card>
 
         <Card title="Your scores">
-          <p className="text-sm text-body">Score entry lands in the score-management milestone.</p>
+          {scores?.length ? (
+            <>
+              <p className="text-2xl font-serif">{scores[0].strokes}</p>
+              <p className="mt-1 text-sm text-body">
+                Latest round, {new Date(scores[0].playedOn).toLocaleDateString()} · {scores.length}/5 logged
+              </p>
+            </>
+          ) : (
+            <p className="text-sm text-body">
+              No scores yet.{" "}
+              <Link to="/scores" className="font-medium text-ink underline underline-offset-4">
+                Log your first round
+              </Link>
+              .
+            </p>
+          )}
         </Card>
 
-        <Card title="Charity & winnings">
-          <p className="text-sm text-body">
-            Charity selection and winnings tracking land in upcoming milestones.
-          </p>
+        <Card title="Charity">
+          {subscriptionDetail?.charity ? (
+            <>
+              <p className="text-lg">
+                {subscriptionDetail.charity.name} · {Number(subscriptionDetail.charityPercentage)}%
+              </p>
+              <p className="mt-1 text-sm text-body">
+                {contributions ? formatPaise(contributions.totalPaise) : "—"} contributed to date
+              </p>
+            </>
+          ) : (
+            <p className="text-sm text-body">
+              No charity selected yet.{" "}
+              <Link to="/charity" className="font-medium text-ink underline underline-offset-4">
+                Choose one
+              </Link>
+              .
+            </p>
+          )}
+        </Card>
+
+        <Card title="Winnings">
+          <p className="text-sm text-body">Winnings tracking lands in the winner-verification milestone.</p>
         </Card>
       </div>
     </div>

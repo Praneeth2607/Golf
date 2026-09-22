@@ -3,9 +3,11 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { paymentProvider } from "../lib/payments";
 import { requireAuth } from "../middleware/auth";
+import { requireActiveSubscription } from "../middleware/subscription";
 import { recordAudit } from "../lib/audit";
 import { applySubscriptionEvent } from "../services/subscriptionEvents";
 import { ApiError } from "../middleware/errorHandler";
+import { env } from "../lib/env";
 
 export const subscriptionsRouter = Router();
 
@@ -27,6 +29,7 @@ subscriptionsRouter.get("/", requireAuth, async (req, res, next) => {
     const subscriptions = await prisma.subscription.findMany({
       where: { userId: req.user!.id },
       orderBy: { createdAt: "desc" },
+      include: { charity: true },
     });
     res.json({ subscriptions });
   } catch (err) {
@@ -40,6 +43,7 @@ subscriptionsRouter.get("/status", requireAuth, async (req, res, next) => {
     const subscription = await prisma.subscription.findFirst({
       where: { userId: req.user!.id },
       orderBy: { createdAt: "desc" },
+      include: { charity: true },
     });
     res.json({ subscription });
   } catch (err) {
@@ -151,6 +155,76 @@ subscriptionsRouter.post("/cancel", requireAuth, async (req, res, next) => {
     });
 
     res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Charity selection & contribution history
+// ---------------------------------------------------------------------------
+
+const charitySelectionSchema = z.object({
+  charityId: z.string().uuid(),
+  percentage: z.coerce.number().min(env.CHARITY_MIN_PERCENTAGE).max(100),
+});
+
+// PATCH /api/subscriptions/charity
+// Sets or updates the caller's charity + contribution percentage on their
+// active subscription. Takes effect from the next charge onward (see
+// applySubscriptionEvent) — it does not retroactively touch past
+// CharityContribution rows, which are an immutable record of what was
+// actually charged at the time.
+subscriptionsRouter.patch("/charity", requireAuth, requireActiveSubscription, async (req, res, next) => {
+  try {
+    const { charityId, percentage } = charitySelectionSchema.parse(req.body);
+
+    const charity = await prisma.charity.findUnique({ where: { id: charityId } });
+    if (!charity || !charity.isActive) {
+      throw new ApiError(400, "Selected charity is not available");
+    }
+
+    const subscription = await prisma.subscription.findFirst({
+      where: { userId: req.user!.id, status: { in: ["ACTIVE", "PAST_DUE"] } },
+      orderBy: { createdAt: "desc" },
+    });
+    if (!subscription) {
+      throw new ApiError(404, "No active subscription");
+    }
+
+    const updated = await prisma.subscription.update({
+      where: { id: subscription.id },
+      data: { charityId, charityPercentage: percentage },
+      include: { charity: true },
+    });
+
+    await recordAudit({
+      actorId: req.user!.id,
+      actorRole: req.user!.role,
+      action: "SUBSCRIPTION_CHARITY_SELECTED",
+      entityType: "subscription",
+      entityId: subscription.id,
+      metadata: { charityId, percentage },
+    });
+
+    res.json({ subscription: updated });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/subscriptions/contributions — the caller's charity contribution history + total.
+subscriptionsRouter.get("/contributions", requireAuth, async (req, res, next) => {
+  try {
+    const contributions = await prisma.charityContribution.findMany({
+      where: { userId: req.user!.id },
+      orderBy: { periodStart: "desc" },
+      include: { charity: { select: { id: true, name: true, slug: true } } },
+    });
+
+    const totalPaise = contributions.reduce((sum, c) => sum + c.amountPaise, 0);
+
+    res.json({ contributions, totalPaise });
   } catch (err) {
     next(err);
   }

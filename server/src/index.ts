@@ -6,6 +6,9 @@ import rateLimit from "express-rate-limit";
 import { env } from "./lib/env";
 import { authRouter } from "./routes/auth";
 import { subscriptionsRouter } from "./routes/subscriptions";
+import { charitiesRouter, adminCharitiesRouter } from "./routes/charities";
+import { donationsRouter } from "./routes/donations";
+import { scoresRouter, adminScoresRouter } from "./routes/scores";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler";
 import { razorpayWebhookRouter } from "./routes/razorpayWebhook";
 
@@ -30,6 +33,11 @@ app.get("/api/health", (_req, res) => res.json({ status: "ok" }));
 
 app.use("/api/auth", authRouter);
 app.use("/api/subscriptions", subscriptionsRouter);
+app.use("/api/charities", charitiesRouter);
+app.use("/api/admin/charities", adminCharitiesRouter);
+app.use("/api/donations", donationsRouter);
+app.use("/api/scores", scoresRouter);
+app.use("/api/admin/scores", adminScoresRouter);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
