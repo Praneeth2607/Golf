@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
@@ -17,6 +17,8 @@ interface AdminCharity {
   summary: string;
   description: string;
   websiteUrl: string | null;
+  logoUrl: string | null;
+  coverImageUrl: string | null;
   isFeatured: boolean;
   isActive: boolean;
   events: CharityEvent[];
@@ -56,6 +58,7 @@ export default function AdminCharities() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [expandedEvents, setExpandedEvents] = useState<string | null>(null);
+  const [expandedMedia, setExpandedMedia] = useState<string | null>(null);
 
   function startEdit(c: AdminCharity) {
     setEditingId(c.id);
@@ -244,10 +247,17 @@ export default function AdminCharities() {
                   >
                     Events
                   </button>
+                  <button
+                    onClick={() => setExpandedMedia(expandedMedia === c.id ? null : c.id)}
+                    className="text-body underline underline-offset-4"
+                  >
+                    Media
+                  </button>
                 </div>
               </div>
 
               {expandedEvents === c.id && <EventManager charityId={c.id} events={c.events} />}
+              {expandedMedia === c.id && <MediaManager charity={c} />}
             </div>
           ))}
         </div>
@@ -331,6 +341,77 @@ function EventManager({ charityId, events }: { charityId: string; events: Charit
           Add
         </button>
       </form>
+    </div>
+  );
+}
+
+function MediaManager({ charity }: { charity: AdminCharity }) {
+  const queryClient = useQueryClient();
+  const logoInput = useRef<HTMLInputElement>(null);
+  const coverInput = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState<"logo" | "cover" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function upload(field: "logo" | "cover", file: File | undefined) {
+    if (!file) return;
+    setBusy(field);
+    setError(null);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      await api.post(`/admin/charities/${charity.id}/${field}`, form);
+      await queryClient.invalidateQueries({ queryKey: ["admin-charities"] });
+    } catch (err: unknown) {
+      setError(
+        (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? `Couldn't upload ${field}.`
+      );
+    } finally {
+      setBusy(null);
+      if (logoInput.current) logoInput.current.value = "";
+      if (coverInput.current) coverInput.current.value = "";
+    }
+  }
+
+  return (
+    <div className="mt-4 border-t border-line pt-4">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div>
+          <p className="text-sm text-body">Logo</p>
+          {charity.logoUrl ? (
+            <img src={charity.logoUrl} alt="" className="mt-2 h-16 w-16 rounded-full border border-line object-cover" />
+          ) : (
+            <p className="mt-2 text-xs text-mute">No logo uploaded.</p>
+          )}
+          <input
+            ref={logoInput}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            onChange={(e) => upload("logo", e.target.files?.[0])}
+            disabled={busy !== null}
+            className="mt-2 block text-xs"
+          />
+          {busy === "logo" && <p className="mt-1 text-xs text-body">Uploading…</p>}
+        </div>
+
+        <div>
+          <p className="text-sm text-body">Cover image</p>
+          {charity.coverImageUrl ? (
+            <img src={charity.coverImageUrl} alt="" className="mt-2 h-16 w-full rounded-lg border border-line object-cover" />
+          ) : (
+            <p className="mt-2 text-xs text-mute">No cover image uploaded.</p>
+          )}
+          <input
+            ref={coverInput}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            onChange={(e) => upload("cover", e.target.files?.[0])}
+            disabled={busy !== null}
+            className="mt-2 block text-xs"
+          />
+          {busy === "cover" && <p className="mt-1 text-xs text-body">Uploading…</p>}
+        </div>
+      </div>
+      {error && <p className="mt-3 text-sm text-negative">{error}</p>}
     </div>
   );
 }

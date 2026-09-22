@@ -13,6 +13,9 @@ const envSchema = z.object({
   // src/lib/jwks.ts and src/middleware/auth.ts), so this can stay unset.
   SUPABASE_JWT_SECRET: z.string().optional(),
   SUPABASE_STORAGE_BUCKET: z.string().default("winner-proofs"),
+  // Public bucket — charity logos/covers are shown on public pages, unlike
+  // winner proof, so they don't need signed URLs.
+  SUPABASE_CHARITY_MEDIA_BUCKET: z.string().default("charity-media"),
 
   // "mock" needs no external account at all — it simulates the gateway
   // in-process so the full subscription lifecycle can be built/demoed

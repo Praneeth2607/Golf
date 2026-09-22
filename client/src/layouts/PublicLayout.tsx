@@ -16,7 +16,13 @@ export function PublicLayout() {
 
   return (
     <div className="flex min-h-screen flex-col bg-canvas text-ink">
-      <header className="sticky top-0 z-40 border-b border-line/70 bg-canvas/90 backdrop-blur">
+      {/* This wrapper (not the whole page) is the sticky header's containing
+          block, so it releases and scrolls away once `main` ends — right
+          before the footer — instead of staying pinned all the way to the
+          true bottom of the page, where it would otherwise permanently
+          overlap the last section's heading with no way to scroll past it. */}
+      <div className="flex flex-1 flex-col">
+      <header className="sticky top-0 z-40 border-b border-line/70 bg-canvas">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-4 sm:px-8">
           <Link to="/">
             <Logo />
@@ -107,9 +113,10 @@ export function PublicLayout() {
       <main className="flex-1">
         <Outlet />
       </main>
+      </div>
 
       <footer className="border-t border-line bg-canvas-soft">
-        <div className="mx-auto max-w-6xl px-5 py-12 sm:px-8">
+        <div className="mx-auto max-w-6xl px-5 pb-10 pt-8 sm:px-8">
           <div className="flex flex-col gap-8 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <Logo />

@@ -14,7 +14,8 @@
     "prisma:migrate": "prisma migrate dev",
     "seed": "tsx src/seed.ts",
     "setup:razorpay-plans": "tsx src/scripts/createPlans.ts",
-    "setup:storage-bucket": "tsx src/scripts/createStorageBucket.ts"
+    "setup:storage-bucket": "tsx src/scripts/createStorageBucket.ts",
+    "setup:charity-media-bucket": "tsx src/scripts/createCharityMediaBucket.ts"
   },
   "dependencies": {
     "@prisma/client": "5.22.0",

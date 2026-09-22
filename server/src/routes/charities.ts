@@ -1,12 +1,17 @@
 import { Router } from "express";
+import multer from "multer";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
 import { recordAudit } from "../lib/audit";
 import { ApiError } from "../middleware/errorHandler";
+import { validateProofFile, MAX_PROOF_FILE_BYTES } from "../lib/fileValidation";
+import { uploadCharityMedia } from "../lib/storage";
 
 export const charitiesRouter = Router();
 export const adminCharitiesRouter = Router();
+
+const mediaUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_PROOF_FILE_BYTES } });
 
 const listQuerySchema = z.object({
   q: z.string().trim().max(200).optional(),
@@ -141,6 +146,52 @@ adminCharitiesRouter.put("/:id", async (req, res, next) => {
     });
 
     res.json({ charity });
+  } catch (err) {
+    next(err);
+  }
+});
+
+async function handleMediaUpload(
+  req: import("express").Request,
+  res: import("express").Response,
+  field: "logoUrl" | "coverImageUrl",
+  action: string
+) {
+  if (!req.file) throw new ApiError(400, "No file uploaded — attach an image as 'file'.");
+  const check = validateProofFile({ mimetype: req.file.mimetype, size: req.file.size });
+  if (!check.ok) throw new ApiError(400, check.error);
+
+  const ext = req.file.mimetype === "image/png" ? "png" : req.file.mimetype === "image/webp" ? "webp" : "jpg";
+  const path = `${req.params.id}/${field}-${Date.now()}.${ext}`;
+  const publicUrl = await uploadCharityMedia(path, req.file.buffer, req.file.mimetype);
+
+  const charity = await prisma.charity.update({ where: { id: req.params.id }, data: { [field]: publicUrl } });
+
+  await recordAudit({
+    actorId: req.user!.id,
+    actorRole: req.user!.role,
+    action,
+    entityType: "charity",
+    entityId: charity.id,
+    metadata: { path },
+  });
+
+  res.status(201).json({ charity });
+}
+
+// POST /api/admin/charities/:id/logo — upload/replace the charity's logo image.
+adminCharitiesRouter.post("/:id/logo", mediaUpload.single("file"), async (req, res, next) => {
+  try {
+    await handleMediaUpload(req, res, "logoUrl", "CHARITY_LOGO_UPLOADED");
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/admin/charities/:id/cover — upload/replace the charity's cover image.
+adminCharitiesRouter.post("/:id/cover", mediaUpload.single("file"), async (req, res, next) => {
+  try {
+    await handleMediaUpload(req, res, "coverImageUrl", "CHARITY_COVER_UPLOADED");
   } catch (err) {
     next(err);
   }

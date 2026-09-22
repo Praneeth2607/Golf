@@ -8,4 +8,5 @@ build/
 coverage/
 client/dist/
 server/dist/
+*.tsbuildinfo
 TEST_CREDENTIALS.md

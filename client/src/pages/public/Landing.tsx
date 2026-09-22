@@ -223,7 +223,13 @@ export default function Landing() {
       )}
 
       {/* FINAL CTA */}
-      <section className="mx-auto max-w-6xl px-5 py-24 text-center sm:px-8">
+      {/* Less bottom padding than other sections is deliberate, not an
+          inconsistency: this is the last section before the footer, and on
+          short viewports scrolled to the very bottom, extra trailing height
+          here pushes this heading further under the sticky header rather
+          than clear of it (verified empirically) — see the matching trim on
+          the footer's own top padding below. */}
+      <section className="mx-auto max-w-6xl px-5 pb-10 pt-24 text-center sm:px-8">
         <motion.div
           initial="hidden"
           whileInView="show"

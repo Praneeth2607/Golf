@@ -22,16 +22,33 @@ function ChartCard({ title, empty, children }: { title: string; empty?: boolean;
   );
 }
 
-const axisTick = { fontSize: 12, fill: "var(--color-body)" };
-const tooltipStyle = { borderRadius: 12, borderColor: "var(--color-line)", fontSize: 13 };
+// Recharts applies color props (fill/stroke, and the `fill`/`stroke` inside
+// tick/axisLine objects) as raw SVG presentation attributes, not CSS —
+// SVG attributes don't resolve `var(...)` the way inline `style` does, so
+// these need to be the actual resolved hex values from Design.md, not the
+// CSS custom properties used everywhere else in the app. (Verified live:
+// with var() here, every chart silently rendered with invisible bars/lines.)
+const COLOR = {
+  wiseGreen: "#9fe870",
+  ink: "#0e0f0c",
+  body: "#454745",
+  line: "#dbe0d6",
+  warning: "#ffd11a",
+  positive: "#2ead4b",
+  negative: "#d03238",
+  accentCyan: "#38c8ff",
+} as const;
+
+const axisTick = { fontSize: 12, fill: COLOR.body };
+const tooltipStyle = { borderRadius: 12, borderColor: COLOR.line, fontSize: 13 };
 
 // Verification statuses are states, not identities — reserved status colors,
 // not a cycled categorical palette (per the dataviz skill's status-color rule).
 const FUNNEL_COLORS: Record<string, string> = {
-  AWAITING_PROOF: "var(--color-warning)",
-  SUBMITTED: "var(--color-accent-cyan)",
-  APPROVED: "var(--color-positive)",
-  REJECTED: "var(--color-negative)",
+  AWAITING_PROOF: COLOR.warning,
+  SUBMITTED: COLOR.accentCyan,
+  APPROVED: COLOR.positive,
+  REJECTED: COLOR.negative,
 };
 
 export default function AdminReports() {
@@ -74,11 +91,11 @@ export default function AdminReports() {
         <ChartCard title="Charity contribution totals" empty={charityChart.length === 0}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={charityChart} layout="vertical" margin={{ left: 24 }}>
-              <CartesianGrid horizontal={false} stroke="var(--color-line)" />
-              <XAxis type="number" tickFormatter={(v) => formatPaise(v)} tick={axisTick} axisLine={{ stroke: "var(--color-line)" }} tickLine={false} />
-              <YAxis type="category" dataKey="name" width={140} tick={{ ...axisTick, fill: "var(--color-ink)" }} axisLine={{ stroke: "var(--color-line)" }} tickLine={false} />
+              <CartesianGrid horizontal={false} stroke={COLOR.line} />
+              <XAxis type="number" tickFormatter={(v) => formatPaise(v)} tick={axisTick} axisLine={{ stroke: COLOR.line }} tickLine={false} />
+              <YAxis type="category" dataKey="name" width={140} tick={{ ...axisTick, fill: COLOR.ink }} axisLine={{ stroke: COLOR.line }} tickLine={false} />
               <Tooltip formatter={(v) => formatPaise(Number(v))} contentStyle={tooltipStyle} />
-              <Bar dataKey="paise" fill="var(--color-wise-green)" radius={[0, 4, 4, 0]} maxBarSize={28} />
+              <Bar dataKey="paise" fill={COLOR.wiseGreen} radius={[0, 4, 4, 0]} maxBarSize={28} />
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
@@ -88,11 +105,11 @@ export default function AdminReports() {
         <ChartCard title="Prize pool by draw" empty={!trendsLoading && drawChart.length === 0}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={drawChart} margin={{ left: 8, right: 8 }}>
-              <CartesianGrid vertical={false} stroke="var(--color-line)" />
-              <XAxis dataKey="name" tick={axisTick} axisLine={{ stroke: "var(--color-line)" }} tickLine={false} />
+              <CartesianGrid vertical={false} stroke={COLOR.line} />
+              <XAxis dataKey="name" tick={axisTick} axisLine={{ stroke: COLOR.line }} tickLine={false} />
               <YAxis tickFormatter={(v) => formatPaise(v)} tick={axisTick} axisLine={false} tickLine={false} width={70} />
               <Tooltip formatter={(v) => formatPaise(Number(v))} contentStyle={tooltipStyle} />
-              <Bar dataKey="paise" fill="var(--color-wise-green)" radius={[4, 4, 0, 0]} maxBarSize={36} />
+              <Bar dataKey="paise" fill={COLOR.wiseGreen} radius={[4, 4, 0, 0]} maxBarSize={36} />
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
@@ -100,11 +117,11 @@ export default function AdminReports() {
         <ChartCard title="New subscriptions (6 months)" empty={!trendsLoading && subscriptionChart.every((m) => m.count === 0)}>
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={subscriptionChart} margin={{ left: 8, right: 8 }}>
-              <CartesianGrid vertical={false} stroke="var(--color-line)" />
-              <XAxis dataKey="month" tick={axisTick} axisLine={{ stroke: "var(--color-line)" }} tickLine={false} />
+              <CartesianGrid vertical={false} stroke={COLOR.line} />
+              <XAxis dataKey="month" tick={axisTick} axisLine={{ stroke: COLOR.line }} tickLine={false} />
               <YAxis allowDecimals={false} tick={axisTick} axisLine={false} tickLine={false} width={30} />
               <Tooltip contentStyle={tooltipStyle} />
-              <Line type="monotone" dataKey="count" stroke="var(--color-wise-green)" strokeWidth={2} dot={{ r: 4, fill: "var(--color-wise-green)" }} />
+              <Line type="monotone" dataKey="count" stroke={COLOR.wiseGreen} strokeWidth={2} dot={{ r: 4, fill: COLOR.wiseGreen }} />
             </LineChart>
           </ResponsiveContainer>
         </ChartCard>
@@ -114,8 +131,8 @@ export default function AdminReports() {
         <ChartCard title="Winner verification funnel" empty={!trendsLoading && funnelChart.every((f) => f.count === 0)}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={funnelChart} margin={{ left: 8, right: 8 }}>
-              <CartesianGrid vertical={false} stroke="var(--color-line)" />
-              <XAxis dataKey="status" tick={axisTick} axisLine={{ stroke: "var(--color-line)" }} tickLine={false} />
+              <CartesianGrid vertical={false} stroke={COLOR.line} />
+              <XAxis dataKey="status" tick={axisTick} axisLine={{ stroke: COLOR.line }} tickLine={false} />
               <YAxis allowDecimals={false} tick={axisTick} axisLine={false} tickLine={false} width={30} />
               <Tooltip contentStyle={tooltipStyle} />
               <Bar dataKey="count" radius={[4, 4, 0, 0]} maxBarSize={48}>

@@ -23,3 +23,19 @@ export async function getSignedProofUrl(path: string, expiresInSeconds = 300): P
   if (error || !data) throw error ?? new Error("Failed to create signed URL");
   return data.signedUrl;
 }
+
+/**
+ * Charity logos/covers, by contrast, are public — shown on the public
+ * directory and profile pages, so a plain public URL is correct here (no
+ * signed-URL round trip needed, and none of the ownership rules that apply
+ * to winner proof apply to charity media).
+ */
+export async function uploadCharityMedia(path: string, buffer: Buffer, contentType: string): Promise<string> {
+  const { error } = await supabaseAdmin.storage
+    .from(env.SUPABASE_CHARITY_MEDIA_BUCKET)
+    .upload(path, buffer, { contentType, upsert: true });
+  if (error) throw error;
+
+  const { data } = supabaseAdmin.storage.from(env.SUPABASE_CHARITY_MEDIA_BUCKET).getPublicUrl(path);
+  return data.publicUrl;
+}

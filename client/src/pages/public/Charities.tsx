@@ -42,20 +42,34 @@ export default function Charities() {
           >
             <Link
               to={`/charities/${c.slug}`}
-              className="block h-full rounded-2xl border border-line bg-canvas-soft/40 p-6 transition hover:border-wise-green"
+              className="block h-full overflow-hidden rounded-2xl border border-line bg-canvas-soft/40 transition hover:border-wise-green"
             >
-              <div className="flex items-start justify-between gap-3">
-                <h3 className="text-lg">{c.name}</h3>
-                {c.isFeatured && (
-                  <span className="shrink-0 rounded-full bg-wise-green/20 px-2.5 py-1 text-[10px] font-medium uppercase tracking-wide text-positive-deep">
-                    Featured
-                  </span>
-                )}
+              {c.coverImageUrl && (
+                <img src={c.coverImageUrl} alt="" className="h-32 w-full object-cover" />
+              )}
+              <div className="p-6">
+                <div className="flex items-center gap-3">
+                  {c.logoUrl && (
+                    <img
+                      src={c.logoUrl}
+                      alt=""
+                      className="h-9 w-9 shrink-0 rounded-full border border-line object-cover"
+                    />
+                  )}
+                  <div className="flex flex-1 items-start justify-between gap-3">
+                    <h3 className="text-lg">{c.name}</h3>
+                    {c.isFeatured && (
+                      <span className="shrink-0 rounded-full bg-wise-green/20 px-2.5 py-1 text-[10px] font-medium uppercase tracking-wide text-positive-deep">
+                        Featured
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <p className="mt-2 text-sm text-body">{c.summary}</p>
+                <span className="mt-4 inline-block text-sm font-medium text-ink-deep">
+                  View profile →
+                </span>
               </div>
-              <p className="mt-2 text-sm text-body">{c.summary}</p>
-              <span className="mt-4 inline-block text-sm font-medium text-ink-deep">
-                View profile →
-              </span>
             </Link>
           </motion.div>
         ))}

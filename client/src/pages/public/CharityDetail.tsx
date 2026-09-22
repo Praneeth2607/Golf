@@ -20,15 +20,34 @@ export default function CharityDetail() {
         ← Back to directory
       </Link>
 
-      <div className="mt-4 flex items-start justify-between gap-3">
-        <h1 className="text-4xl">{charity.name}</h1>
-        {charity.isFeatured && (
-          <span className="mt-2 shrink-0 rounded-full bg-wise-green/20 px-2.5 py-1 text-[10px] font-medium uppercase tracking-wide text-positive-deep">
-            Featured
-          </span>
+      {charity.coverImageUrl && (
+        <img
+          src={charity.coverImageUrl}
+          alt=""
+          className="mt-4 h-48 w-full rounded-2xl border border-line object-cover sm:h-64"
+        />
+      )}
+
+      <div className="mt-6 flex items-start gap-4">
+        {charity.logoUrl && (
+          <img
+            src={charity.logoUrl}
+            alt=""
+            className="h-14 w-14 shrink-0 rounded-full border border-line object-cover"
+          />
         )}
+        <div className="flex-1">
+          <div className="flex items-start justify-between gap-3">
+            <h1 className="text-4xl">{charity.name}</h1>
+            {charity.isFeatured && (
+              <span className="mt-2 shrink-0 rounded-full bg-wise-green/20 px-2.5 py-1 text-[10px] font-medium uppercase tracking-wide text-positive-deep">
+                Featured
+              </span>
+            )}
+          </div>
+          <p className="mt-3 text-lg text-body">{charity.summary}</p>
+        </div>
       </div>
-      <p className="mt-3 text-lg text-body">{charity.summary}</p>
 
       <p className="mt-8 whitespace-pre-line text-body">{charity.description}</p>
 

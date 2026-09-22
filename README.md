@@ -118,6 +118,25 @@ Building milestone-by-milestone per the PRD's development process (§25). Curren
       real Supabase project at each milestone — documented inline in this README as they
       happened, not just asserted after the fact.
 - [ ] Milestone 12 — Deployment
+- [x] **Post-Milestone-11 hardening.** Payments: mock provider adopted as the permanent demo
+      path (Razorpay's India onboarding needs business KYC that isn't available for this
+      project; the `PaymentProvider` abstraction and Razorpay implementation stay in place,
+      untested, for when real credentials exist). Charity media: real file upload for
+      logos/covers, closing the gap noted above — new public `charity-media` Storage bucket
+      (`server/src/scripts/createCharityMediaBucket.ts`), `POST /api/admin/charities/:id/logo`
+      and `/cover` endpoints, an admin media manager UI, and logo/cover now actually rendered
+      on the public directory and charity detail pages (previously stored but never displayed
+      anywhere). Responsiveness: actually verified, not just assumed — 78 full-page screenshots
+      across the PRD's six breakpoints (1440/1280/1024/768/390/375) and every public/subscriber/
+      admin page, 0 horizontal-overflow cases, and two real rendering bugs found and fixed by
+      visual inspection (an automated overflow check alone wouldn't have caught either): a
+      sticky header that permanently overlapped the landing page's final CTA heading on short
+      mobile viewports (fixed by narrowing the sticky header's containing block to exclude the
+      footer, plus trimming trailing section padding — see comments in `PublicLayout.tsx` and
+      `Landing.tsx`), and every admin Reports chart rendering with invisible bars/lines because
+      Recharts applies color props as raw SVG presentation attributes, which don't resolve CSS
+      `var(...)` the way inline styles do (fixed by hardcoding the resolved hex values from
+      `Design.md` in `Reports.tsx` instead of referencing the CSS custom properties).
 
 ## Architecture
 
@@ -356,12 +375,10 @@ addition rather than something to fake with mocks that would just re-assert the 
 - Donations are recorded directly (no payment capture step yet) — a documented simplification;
   see the comment in `server/src/routes/donations.ts` for how it'd plug into the same
   `PaymentProvider` the subscription flow already uses.
-- Charity logos/cover images are still entered as URLs, not uploaded files. The Storage
-  infrastructure they'd need now exists (built for winner-proof uploads in Milestone 7 —
-  `server/src/lib/storage.ts`), just not yet wired up for charity media specifically.
-- Payments run on the mock provider by default (see "Payment provider" above); the Razorpay
-  provider is implemented but untested against a live account, since Razorpay's business-KYC
-  onboarding is blocking that for now.
+- Payments run on the mock provider by default (see "Payment provider" above) — this is the
+  permanent demo path for this project, not a temporary gap; the Razorpay provider is
+  implemented but untested against a live account, since Razorpay's business-KYC onboarding
+  isn't available here.
 - No frontend Razorpay Checkout widget yet — only the mock demo-payment flow has a UI. Lands
   alongside working Razorpay credentials.
 - Deployment (Vercel + hosted Postgres) not yet configured — see Milestone 12.
