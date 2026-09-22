@@ -40,8 +40,9 @@ Building milestone-by-milestone per the PRD's development process (§25). Curren
       by date, not insertion order, so backfilling an old round evicts itself rather than
       bumping a more recent one. Gated behind an active subscription, like other subscriber
       actions. Admins can look up any subscriber by email and edit/delete their scores at
-      `/admin/scores` (full user search/list is Milestone 9; email lookup covers the PRD's
-      "admin can edit golf scores" requirement in the meantime). Verified live: the full
+      `/admin/scores` (kept as a fast email-lookup tool even after Milestone 9 added full
+      user search — jumping straight to a user's scores doesn't need the general user list).
+      Verified live: the full
       6-scores-in rolling window, duplicate-date rejection, future-date rejection, and the
       backfill-evicts-itself edge case all confirmed against the real database.
 - [x] **Milestone 6 — Draw engine.** The engine is a set of pure, unit-tested functions
@@ -77,9 +78,28 @@ Building milestone-by-milestone per the PRD's development process (§25). Curren
       attempt is blocked. That run also caught and fixed a pre-existing seed-script bug (missing
       `subscription_events` cleanup ordering, same class of issue as an earlier
       `charity_contributions` one).
-- [ ] Milestone 8 — User dashboard (shell exists; data wiring pending)
-- [ ] Milestone 9 — Admin dashboard (shell + role gating exists; features pending)
-- [ ] Milestone 10 — Analytics and reports
+- [x] **Milestone 8 — User dashboard.** All five required elements (subscription status, score
+      entry, charity + contribution %, participation summary, winnings overview) were already
+      wired to real data as side effects of Milestones 3-7; this milestone was mainly a redesign
+      pass, since the PRD explicitly warns against "filling the screen with cards" and asks for
+      information hierarchy. Reworked from a flat 5-card grid into: a compact subscription-status
+      line (or a prominent subscribe CTA if inactive) → a hero section for the thing that
+      actually matters emotionally, this month's draw result and how you did in it → a secondary
+      row of compact tiles (scores/charity/winnings) that link through to their full pages.
+- [x] **Milestone 9 — Admin dashboard.** Closed the two real gaps: **user management**
+      (`/admin/users` — search, per-user detail with scores/charity/winnings totals, edit
+      profile, role toggle guarded against self-demotion) and **subscription management**
+      (`/admin/subscriptions` — every subscription platform-wide, filterable by status, with an
+      admin-override cancel reusing the same `PaymentProvider` call the self-service cancel
+      uses). Draw/charity/winner management already existed from their respective milestones.
+      Reports (`/admin/reports`) now shows real totals — subscribers, prize pool, charity
+      contributions, payouts, draw/winner statistics — plus a charity-contribution bar chart
+      (single-hue, PRD-brand-colored, per the dataviz skill's magnitude-comparison rule). The
+      admin overview page (`/admin`) is a real KPI + quick-nav landing page, not a placeholder.
+      Verified live: the self-role-change guard, cancelling an already-cancelled subscription
+      (409), and a real cancel-then-verify round trip, all against the live database.
+- [ ] Milestone 10 — Analytics and reports (basic totals/chart now live under Milestone 9;
+      this milestone covers deeper analytics/visualizations beyond the PRD §11.E baseline)
 - [ ] Milestone 11 — Testing
 - [ ] Milestone 12 — Deployment
 
@@ -283,10 +303,10 @@ file validation. Grows alongside each milestone; subscription lifecycle is next 
 
 ## Known limitations (current state)
 
-- Auth, profile editing, subscriptions, the charity system, score management, the draw engine,
-  and winner verification are functionally wired end-to-end and verified live against a real
-  Supabase project and a real Storage bucket; most of the admin dashboard
-  (users/subscriptions/reports) is routed but shows milestone placeholders.
+- Every milestone through 9 (auth, profiles, subscriptions, charity, scores, draws, winner
+  verification, both dashboards, admin user/subscription/reports management) is functionally
+  wired end-to-end and verified live against a real Supabase project and Storage bucket. Formal
+  automated test coverage (Milestone 11) and deployment (Milestone 12) are what's left.
 - Jackpot rollover assumes draws are created and published in chronological order — a new
   draw's `jackpotRolloverInPaise` is copied from the most recently *published* draw at creation
   time. Publishing draws out of order (e.g. backfilling a skipped month) would carry the rollover
