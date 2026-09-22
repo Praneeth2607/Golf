@@ -18,6 +18,9 @@
     "setup:storage-bucket": "tsx src/scripts/createStorageBucket.ts",
     "setup:charity-media-bucket": "tsx src/scripts/createCharityMediaBucket.ts"
   },
+  "overrides": {
+    "jose": "^4.15.9"
+  },
   "dependencies": {
     "@prisma/client": "5.22.0",
     "@supabase/supabase-js": "^2.116.0",
