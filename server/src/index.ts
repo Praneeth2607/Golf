@@ -9,6 +9,8 @@ import { subscriptionsRouter } from "./routes/subscriptions";
 import { charitiesRouter, adminCharitiesRouter } from "./routes/charities";
 import { donationsRouter } from "./routes/donations";
 import { scoresRouter, adminScoresRouter } from "./routes/scores";
+import { drawsRouter, adminDrawsRouter } from "./routes/draws";
+import { winnersRouter, adminWinnersRouter } from "./routes/winners";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler";
 import { razorpayWebhookRouter } from "./routes/razorpayWebhook";
 
@@ -38,6 +40,10 @@ app.use("/api/admin/charities", adminCharitiesRouter);
 app.use("/api/donations", donationsRouter);
 app.use("/api/scores", scoresRouter);
 app.use("/api/admin/scores", adminScoresRouter);
+app.use("/api/draws", drawsRouter);
+app.use("/api/admin/draws", adminDrawsRouter);
+app.use("/api/winners", winnersRouter);
+app.use("/api/admin/winners", adminWinnersRouter);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

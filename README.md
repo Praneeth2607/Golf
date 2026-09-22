@@ -44,8 +44,39 @@ Building milestone-by-milestone per the PRD's development process (§25). Curren
       "admin can edit golf scores" requirement in the meantime). Verified live: the full
       6-scores-in rolling window, duplicate-date rejection, future-date rejection, and the
       backfill-evicts-itself edge case all confirmed against the real database.
-- [ ] Milestone 6 — Draw engine
-- [ ] Milestone 7 — Winner verification
+- [x] **Milestone 6 — Draw engine.** The engine is a set of pure, unit-tested functions
+      (`server/src/draw/*.ts`: number generation, matching, prize-tier math) orchestrated by a
+      DB-touching service (`server/src/services/draws.ts`) — every one of the PRD §26 functions
+      (`calculateEligibleSubscribers`, `generateRandomDraw`/`generateAlgorithmicDraw`,
+      `calculateMatches`, `allocatePrizes`, `applyJackpotRollover`, `createWinnerRecords`,
+      `simulateDraw`, `publishDraw`) exists as a named, independently-testable function. Admin
+      flow at `/admin/draws`: configure method/tier splits, create a monthly draw, simulate
+      (writes only to `DrawSimulation`, never touches the real result), then publish — which
+      atomically creates tickets, computes matches, splits each tier's pool equally among
+      winners (remainder paise distributed, never dropped), and creates a `DrawWinner` +
+      `WinnerVerification` (`AWAITING_PROOF`) + `Payout` (`PENDING`) row per winner. A Postgres
+      trigger blocks any mutation of a published draw at the DB level, independent of the app
+      logic. Subscribers see results and their own participation at `/draws`. Verified live end
+      to end against the real database, including a seed deliberately chosen to produce a
+      guaranteed 5-number-match winner, so the full ticket → match → prize-split →
+      verification/payout-row chain was actually exercised, not just simulated in tests.
+- [x] **Milestone 7 — Winner verification.** Full PRD §13 workflow:
+      `AWAITING_PROOF → SUBMITTED → APPROVED/REJECTED → (approved) payout PENDING → PAID`, with
+      the legal transitions centralized in `server/src/lib/verificationTransitions.ts`
+      (unit-tested) so every route enforces the same rules instead of re-deriving them inline —
+      including that a winner *can* re-submit after a rejection, but never after approval, and a
+      payout can never be marked paid twice. Proof is a screenshot upload (Multer, JPEG/PNG/WEBP,
+      5MB cap, type/size validated both by Multer and a pure `validateProofFile()`) stored in a
+      **private** Supabase Storage bucket — every read goes through a short-lived signed URL
+      generated server-side after an ownership-or-admin check, never a public path. Subscriber
+      flow at `/winnings` (upload, view own proof, track status); admin review queue at
+      `/admin/winners` (filter by status, view proof, approve/reject with notes, mark paid).
+      Verified live end to end against the real database and a real Storage bucket: uploaded an
+      actual PNG, confirmed a non-owner gets a 404 (not a leak) trying to view it, walked a
+      winner through reject → resubmit → approve → payout, and confirmed a second payout
+      attempt is blocked. That run also caught and fixed a pre-existing seed-script bug (missing
+      `subscription_events` cleanup ordering, same class of issue as an earlier
+      `charity_contributions` one).
 - [ ] Milestone 8 — User dashboard (shell exists; data wiring pending)
 - [ ] Milestone 9 — Admin dashboard (shell + role gating exists; features pending)
 - [ ] Milestone 10 — Analytics and reports
@@ -80,10 +111,18 @@ starts rejecting valid tokens after switching Supabase projects.
 floating-point money math anywhere in the codebase (PRD §27).
 
 **Draw numbers (documented assumption):** the PRD doesn't define what the 5/4/3-number "match"
-actually refers to. This build derives each subscriber's monthly draw ticket from their 5 most
-recent Stableford scores, snapshotted into `draw_tickets` at draw-prep time so results stay
-reproducible even if scores are later edited. This is the single biggest interpretive call in
-the project — see `supabase/migrations/0001_init.sql` for the `draw_tickets` design.
+actually refers to. This build derives each subscriber's monthly draw ticket from their own
+logged Stableford scores (1–45, the same range as the winning numbers), snapshotted into
+`draw_tickets` at publish time so results stay reproducible even if scores are later edited.
+This is the single biggest interpretive call in the project. Two consequences worth knowing:
+
+- A subscriber with fewer than 5 logged scores gets a shorter ticket, not a padded one — they
+  can reach at most the tier their ticket size allows (3 scores → at most a THREE match). Partial
+  participation gives partial odds, never an inflated or invalid one.
+- "Algorithmic" mode doesn't just relabel random: winning numbers are sampled weighted by how
+  often each number appears across all eligible tickets that month, so numbers many people
+  actually shot are more likely to be drawn (`server/src/draw/numberGeneration.ts`) — a
+  deliberate, testable difference from uniform random, not just a rename.
 
 **Payment provider (documented deviation from the PRD's suggested stack):** the PRD names
 Stripe but allows "Stripe or equivalent PCI-compliant provider" (§04). Stripe's India
@@ -147,8 +186,9 @@ cp client/.env.example client/.env
    ES256 signing keys), `SUPABASE_JWT_SECRET` can be left unset — see "Auth model" above.
 4. If you use the pooler connection string (port 6543) for `DATABASE_URL`, append
    `?pgbouncer=true` — see the comment in `server/.env.example`.
-5. Create a private Storage bucket named `winner-proofs` (Settings → Storage) — used from
-   Milestone 7 onward.
+5. Run `npm run setup:storage-bucket` (in `server/`) to create the private `winner-proofs`
+   Storage bucket used for winner proof uploads — safe to re-run, it's a no-op if the bucket
+   already exists.
 
 ### Seed data / demo accounts
 
@@ -171,9 +211,14 @@ Creates (or reuses, if re-run) 6 accounts covering every subscription state, all
 
 Also seeds 5 demo charities (2 featured, 2 with an upcoming event), wires `active.monthly` to
 Fairway Futures (10%) and `active.yearly` to Clean Water Collective (20%) with a real
-contribution-history row each, and gives `active.monthly` a full 5-score history and
-`active.yearly` a partial 3-score history. Draw/winner seed data lands alongside those
-respective milestones.
+contribution-history row each, gives `active.monthly` a full 5-score history and `active.yearly`
+a partial 3-score history, and seeds a draw config plus two draws: one already-**published**
+draw (period `2026-08`) with a real winner — `active.monthly` guaranteed to hit a 5-number match,
+so the winner/verification/payout chain has real data to look at — and one open **draft** draw
+(`2026-09`) so the admin draw UI has something to simulate/publish live in a demo. The
+2026-08 winner starts at a clean `AWAITING_PROOF` / `PENDING` state — proof upload, review, and
+payout are left for you to walk through in the demo rather than pre-seeded, since that's the
+whole point of the Milestone 7 UI.
 
 ### Payment provider setup
 
@@ -229,22 +274,29 @@ code.
 npm run test:server
 ```
 
-Currently covers `percentageOfPaise()` (charity contribution / future prize-pool math) and
-`idsToEvict()` (the score rolling-window rule). Grows alongside each milestone; draw determinism
-and subscription lifecycle are next per PRD §24.
+Currently covers `percentageOfPaise()` / `splitEqually()` (money math), `idsToEvict()` (score
+rolling-window), the draw engine's pure core (`calculateMatches`, `calculatePrizePool` /
+`calculatePrizeTiers` / `applyJackpotRollover`, `generateRandomDraw` / `generateAlgorithmicDraw`
+— including a statistical check that algorithmic mode is actually biased toward frequent
+numbers), and the winner-verification state machine (`verificationTransitions.ts`) plus proof
+file validation. Grows alongside each milestone; subscription lifecycle is next per PRD §24.
 
 ## Known limitations (current state)
 
-- Auth, profile editing, subscriptions, the charity system, and score management are
-  functionally wired end-to-end and verified live against a real Supabase project; draws,
-  winners, and most of the admin dashboard (users/subscriptions/draws/winners/reports) are
-  routed but show milestone placeholders.
+- Auth, profile editing, subscriptions, the charity system, score management, the draw engine,
+  and winner verification are functionally wired end-to-end and verified live against a real
+  Supabase project and a real Storage bucket; most of the admin dashboard
+  (users/subscriptions/reports) is routed but shows milestone placeholders.
+- Jackpot rollover assumes draws are created and published in chronological order — a new
+  draw's `jackpotRolloverInPaise` is copied from the most recently *published* draw at creation
+  time. Publishing draws out of order (e.g. backfilling a skipped month) would carry the rollover
+  incorrectly; not a concern for normal monthly operation, but worth knowing if testing manually.
 - Donations are recorded directly (no payment capture step yet) — a documented simplification;
   see the comment in `server/src/routes/donations.ts` for how it'd plug into the same
   `PaymentProvider` the subscription flow already uses.
-- Charity logos/cover images are entered as URLs, not uploaded files — file upload is deferred
-  until the Storage infrastructure is built out for winner-proof uploads (Milestone 7), then
-  reused here.
+- Charity logos/cover images are still entered as URLs, not uploaded files. The Storage
+  infrastructure they'd need now exists (built for winner-proof uploads in Milestone 7 —
+  `server/src/lib/storage.ts`), just not yet wired up for charity media specifically.
 - Payments run on the mock provider by default (see "Payment provider" above); the Razorpay
   provider is implemented but untested against a live account, since Razorpay's business-KYC
   onboarding is blocking that for now.

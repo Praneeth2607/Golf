@@ -13,3 +13,17 @@ export function percentageOfPaise(amountPaise: number, percentage: number | stri
   const product = amountPaise * basisPoints; // integer * integer, exact
   return Math.round(product / 10_000);
 }
+
+/**
+ * Splits a paise amount into `parts` equal shares that sum back to exactly
+ * the original amount (PRD §07: "prizes split equally among multiple
+ * winners"). Integer division drops a remainder of at most `parts - 1`
+ * paise; that remainder is handed out one paisa at a time to the first few
+ * shares rather than silently lost, so total payouts always reconcile.
+ */
+export function splitEqually(totalPaise: number, parts: number): number[] {
+  if (parts <= 0) return [];
+  const base = Math.floor(totalPaise / parts);
+  const remainder = totalPaise - base * parts;
+  return Array.from({ length: parts }, (_, i) => base + (i < remainder ? 1 : 0));
+}

@@ -3,6 +3,8 @@ import { Link } from "react-router-dom";
 import { useAuthStore } from "@/store/authStore";
 import { useSubscriptionStatus, useContributions } from "@/hooks/useSubscription";
 import { useScores } from "@/hooks/useScores";
+import { usePublishedDraws, useMyParticipation } from "@/hooks/useDraws";
+import { useMyWinnings } from "@/hooks/useWinners";
 import { formatPaise } from "@/lib/money";
 
 function Card({ title, children, accent = false }: { title: string; children: ReactNode; accent?: boolean }) {
@@ -20,6 +22,11 @@ export default function Dashboard() {
   const { data: subscriptionDetail } = useSubscriptionStatus();
   const { data: contributions } = useContributions();
   const { data: scores } = useScores();
+  const { data: draws } = usePublishedDraws();
+  const { data: participation } = useMyParticipation();
+  const latestDraw = draws?.[0];
+  const latestParticipation = participation?.find((p) => p.drawId === latestDraw?.id);
+  const { data: winnings } = useMyWinnings();
 
   return (
     <div className="mx-auto max-w-5xl px-5 py-10 sm:px-8">
@@ -49,8 +56,28 @@ export default function Dashboard() {
           )}
         </Card>
 
-        <Card title="This month's draw" accent>
-          <p className="text-sm text-canvas/70">Draw system lands in the draw-engine milestone.</p>
+        <Card title="Latest draw" accent>
+          {latestDraw ? (
+            <>
+              <div className="flex flex-wrap gap-1.5">
+                {latestDraw.winningNumbers.map((n) => (
+                  <span key={n} className="grid h-7 w-7 place-items-center rounded-full bg-wise-green text-xs font-medium text-ink-deep">
+                    {n}
+                  </span>
+                ))}
+              </div>
+              <p className="mt-2 text-sm text-canvas/70">
+                {latestDraw.periodLabel}
+                {latestParticipation?.won
+                  ? ` · you won ${formatPaise(latestParticipation.won.prizeAmountPaise)}!`
+                  : latestParticipation
+                    ? " · no match this time"
+                    : ""}
+              </p>
+            </>
+          ) : (
+            <p className="text-sm text-canvas/70">No draws published yet.</p>
+          )}
         </Card>
 
         <Card title="Your scores">
@@ -94,7 +121,19 @@ export default function Dashboard() {
         </Card>
 
         <Card title="Winnings">
-          <p className="text-sm text-body">Winnings tracking lands in the winner-verification milestone.</p>
+          {winnings?.winners.length ? (
+            <>
+              <p className="text-2xl font-serif">{formatPaise(winnings.totalWonPaise)}</p>
+              <p className="mt-1 text-sm text-body">
+                {formatPaise(winnings.totalPaidPaise)} paid out ·{" "}
+                <Link to="/winnings" className="font-medium text-ink underline underline-offset-4">
+                  View details
+                </Link>
+              </p>
+            </>
+          ) : (
+            <p className="text-sm text-body">No wins yet — keep logging scores and stay in the draw.</p>
+          )}
         </Card>
       </div>
     </div>

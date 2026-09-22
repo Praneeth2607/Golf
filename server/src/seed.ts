@@ -2,6 +2,7 @@ import "dotenv/config";
 import { supabaseAdmin } from "./lib/supabase";
 import { prisma } from "./lib/prisma";
 import { percentageOfPaise } from "./lib/money";
+import { publishDraw } from "./services/draws";
 
 // Demo/seed data, built up incrementally as milestones land:
 // - Milestone 2: admin account + subscriber accounts covering each
@@ -11,11 +12,15 @@ import { percentageOfPaise } from "./lib/money";
 //   subscription -> charity -> contribution relationship end to end.
 // - Milestone 5: Stableford score history for a couple of subscribers (one
 //   with a full 5, one partial) so the rolling-window UI has real data.
-// Draws and winners are seeded incrementally as those milestones land.
+// - Milestone 6: a draw config, one already-published draw with a real
+//   winner (seed hand-picked to guarantee a FIVE match against
+//   active.monthly's ticket — see seedDraws below), and one open DRAFT draw
+//   so the admin draw UI has something to simulate/publish live in a demo.
+// Winner verification/payout seed data lands with Milestone 7.
 //
 // Safe to re-run: users/charities that already exist (by email/slug) are
-// reused rather than duplicated, and demo subscriptions/contributions are
-// reset to a clean state each run.
+// reused rather than duplicated, and demo subscriptions/contributions/draws
+// are reset to a clean state each run.
 
 const DEMO_PASSWORD = "Password123!";
 
@@ -194,8 +199,11 @@ async function seedSubscription(
   sub: NonNullable<SeedUser["subscription"]>,
   charitySlugToId: Map<string, string>
 ) {
-  // Child rows first — CharityContribution has no cascading delete from
-  // Subscription, so it must be cleared before the subscription it points at.
+  // Child rows first — neither CharityContribution nor SubscriptionEvent
+  // cascade-delete from Subscription, so both must be cleared before the
+  // subscription row itself.
+  const existingSubs = await prisma.subscription.findMany({ where: { userId }, select: { id: true } });
+  await prisma.subscriptionEvent.deleteMany({ where: { subscriptionId: { in: existingSubs.map((s) => s.id) } } });
   await prisma.charityContribution.deleteMany({ where: { userId } });
   await prisma.subscription.deleteMany({ where: { userId } });
 
@@ -259,6 +267,40 @@ async function seedScores(userId: string, scores: NonNullable<SeedUser["scores"]
   }
 }
 
+async function deleteDrawByPeriod(periodLabel: string) {
+  const draw = await prisma.draw.findUnique({ where: { periodLabel } });
+  if (!draw) return;
+
+  const winners = await prisma.drawWinner.findMany({ where: { drawId: draw.id } });
+  for (const w of winners) {
+    await prisma.payout.deleteMany({ where: { drawWinnerId: w.id } });
+    await prisma.winnerVerification.deleteMany({ where: { drawWinnerId: w.id } });
+  }
+  await prisma.drawWinner.deleteMany({ where: { drawId: draw.id } });
+  await prisma.draw.delete({ where: { id: draw.id } }); // cascades tickets + simulations
+}
+
+async function seedDraws(adminId: string) {
+  await prisma.drawConfiguration.updateMany({ where: { isActive: true }, data: { isActive: false } });
+  await prisma.drawConfiguration.create({
+    data: { method: "RANDOM", tier5PoolPct: 40, tier4PoolPct: 35, tier3PoolPct: 25, prizePoolPctOfSub: 20, isActive: true },
+  });
+
+  await deleteDrawByPeriod("2026-08");
+  const lastMonthDraw = await prisma.draw.create({
+    data: { periodLabel: "2026-08", method: "RANDOM", status: "DRAFT" },
+  });
+  // Seed hand-picked (see server/README notes / commit history) to guarantee
+  // a FIVE-number match against active.monthly's seeded ticket [28,29,31,32,35],
+  // so the winner -> verification -> payout chain has real demo data.
+  await publishDraw(lastMonthDraw.id, adminId, "probe-189702");
+
+  await deleteDrawByPeriod("2026-09");
+  await prisma.draw.create({
+    data: { periodLabel: "2026-09", method: "RANDOM", status: "DRAFT" },
+  });
+}
+
 async function main() {
   console.log("Seeding charities...");
   const charitySlugToId = await seedCharities();
@@ -266,8 +308,11 @@ async function main() {
 
   console.log(`Seeding ${USERS.length} demo accounts...\n`);
 
+  let adminId: string | null = null;
+
   for (const user of USERS) {
     const userId = await getOrCreateAuthUser(user);
+    if (user.role === "ADMIN") adminId = userId;
 
     await prisma.profile.update({
       where: { id: userId },
@@ -283,6 +328,10 @@ async function main() {
 
     console.log(`  ✓ ${user.email} (${user.role}${user.subscription ? `, ${user.subscription.status}` : ""})`);
   }
+
+  console.log("\nSeeding draws...");
+  await seedDraws(adminId!);
+  console.log("  ✓ 1 published draw (2026-08, with a real winner) + 1 draft draw (2026-09)");
 
   console.log(`\nAll demo accounts use the password: ${DEMO_PASSWORD}`);
 }
