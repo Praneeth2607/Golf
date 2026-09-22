@@ -359,6 +359,57 @@ next step to close it would be a dedicated test database (a second Supabase proj
 Postgres) wired into `vitest` with per-test transaction rollback, which is a real infrastructure
 addition rather than something to fake with mocks that would just re-assert the same Prisma calls.
 
+## Deployment (Milestone 12)
+
+Database, Auth, and Storage are already hosted (Supabase) — deployment here means putting the
+client and server on Vercel as two separate projects from this one repo. This needs a Vercel
+account connected to GitHub, which can't be scripted from here, so this section is a walkthrough
+rather than something already run.
+
+### 1. Server project (`server/`)
+
+The Express app is unchanged for local dev (`npm run dev`/`start` still work exactly as before),
+but now also runs as a Vercel serverless function via `server/api/index.ts`, which re-exports the
+same `app` from `server/src/app.ts` (split out from `src/index.ts` for this reason).
+`server/vercel.json` rewrites every request to that one function, so Express still does its own
+internal routing (`/api/...`) exactly as it does locally.
+
+1. In the Vercel dashboard: **Add New → Project → Import** this repo, set **Root Directory** to
+   `server`, framework preset **Other**. Leave build/output settings at their defaults — Vercel's
+   Node builder picks up `api/index.ts` automatically; `npm install` still runs `prisma generate`
+   via the `postinstall` script.
+2. Set every variable from `server/.env.example` as a Vercel **Environment Variable** (Production
+   at minimum): `DATABASE_URL` (Supabase, with `?pgbouncer=true` — see below), `SUPABASE_URL`,
+   `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_SECRET` (or rely on JWKS if your Supabase project
+   uses ES256/RS256 — see `server/src/lib/jwks.ts`), `SUPABASE_STORAGE_BUCKET`,
+   `SUPABASE_CHARITY_MEDIA_BUCKET`, `PAYMENT_PROVIDER=mock` (see "Known limitations" — this stays
+   `mock` until real Razorpay credentials exist), `CLIENT_ORIGIN` (the client project's URL, set
+   after step 2 below — Vercel lets you add/edit env vars and redeploy at any time), `PORT` (unused
+   by the serverless function itself but required by the shared `env.ts` schema — any value works).
+3. Deploy. Note the resulting URL (e.g. `https://digital-heroes-api.vercel.app`) — the client needs
+   it as `VITE_API_URL=https://<that-url>/api`.
+
+### 2. Client project (`client/`)
+
+1. **Add New → Project → Import** the same repo again, this time with **Root Directory** set to
+   `client`. Vercel auto-detects the Vite preset (`npm run build`, output `dist`).
+2. Set `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` (from `client/.env.example`), and
+   `VITE_API_URL=https://<server-project-url>/api` (from step 3 above).
+3. Deploy, then go back to the **server** project's env vars and set `CLIENT_ORIGIN` to this
+   client URL (needed for the server's CORS check — `server/src/app.ts`), and redeploy the server
+   project so it picks up the change.
+
+### Notes
+
+- Both projects auto-redeploy on every push to `main` once connected — no separate deploy step
+  needed for future changes.
+- `DATABASE_URL` should use Supabase's pooled connection string with `?pgbouncer=true` appended
+  (see "Supabase setup" above) — serverless functions open a fresh connection per invocation, and
+  the transaction-mode pooler is what makes that viable at any real request volume.
+- The Supabase Storage buckets (`winner-proofs`, `charity-media`) and Razorpay plans (if/when used)
+  are created by the one-off scripts in `server/src/scripts/` — run those once locally against the
+  same Supabase project before or after the first deploy; they don't need to run on Vercel itself.
+
 ## Known limitations (current state)
 
 - Every milestone through 11 (auth, profiles, subscriptions, charity, scores, draws, winner
@@ -381,4 +432,7 @@ addition rather than something to fake with mocks that would just re-assert the 
   isn't available here.
 - No frontend Razorpay Checkout widget yet — only the mock demo-payment flow has a UI. Lands
   alongside working Razorpay credentials.
-- Deployment (Vercel + hosted Postgres) not yet configured — see Milestone 12.
+- The codebase is deploy-ready (Express split into a reusable `app` + a Vercel serverless entry
+  point, `vercel.json` rewrites, env-var-driven API base URL and CORS origin — see "Deployment"
+  above) but not yet actually deployed, since that requires a Vercel account connected to this
+  repo, which can't be done from here.
