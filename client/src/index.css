@@ -1,0 +1,71 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-serif: "Fraunces", Georgia, serif;
+
+  /* Brand & accent — Wise Green family (see /Design.md) */
+  --color-wise-green: #9fe870;
+  --color-green-active: #cdffad;
+  --color-green-neutral: #c5edab;
+  --color-green-pale: #e2f6d5;
+
+  /* Surface */
+  --color-canvas: #ffffff;
+  --color-canvas-soft: #e8ebe6;
+  --color-line: #dbe0d6;
+
+  /* Text */
+  --color-ink: #0e0f0c;
+  --color-ink-deep: #163300;
+  --color-body: #454745;
+  --color-mute: #868685;
+
+  /* Semantic — positive */
+  --color-positive: #2ead4b;
+  --color-positive-deep: #054d28;
+
+  /* Semantic — warning */
+  --color-warning: #ffd11a;
+  --color-warning-deep: #b86700;
+  --color-warning-content: #4a3b1c;
+
+  /* Semantic — negative */
+  --color-negative: #d03238;
+  --color-negative-deep: #a72027;
+  --color-negative-darkest: #a7000d;
+  --color-negative-bg: #320707;
+
+  /* Tertiary accent */
+  --color-accent-orange: #ffc091;
+  --color-accent-cyan: #38c8ff;
+}
+
+:root {
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--font-serif);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+
+::selection {
+  background: var(--color-wise-green);
+  color: var(--color-ink-deep);
+}

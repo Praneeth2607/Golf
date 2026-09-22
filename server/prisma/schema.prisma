@@ -1,0 +1,403 @@
+// Digital Heroes — database schema
+// NOTE: `Profile.id` is the Supabase `auth.users.id` (UUID). Supabase manages
+// the `auth` schema itself; Prisma only owns the `public` schema, so the link
+// to auth.users is by convention (id equality), not a cross-schema FK.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// ENUMS
+// ---------------------------------------------------------------------------
+
+enum Role {
+  SUBSCRIBER
+  ADMIN
+}
+
+enum SubscriptionPlan {
+  MONTHLY
+  YEARLY
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+  LAPSED
+  INCOMPLETE
+}
+
+enum SubscriptionEventType {
+  CHECKOUT_COMPLETED
+  RENEWED
+  CANCELLED
+  PAYMENT_FAILED
+  EXPIRED
+}
+
+enum DrawMethod {
+  RANDOM
+  ALGORITHMIC
+}
+
+enum DrawStatus {
+  DRAFT
+  SIMULATED
+  PUBLISHED
+}
+
+enum MatchTier {
+  FIVE
+  FOUR
+  THREE
+}
+
+enum VerificationStatus {
+  AWAITING_PROOF
+  SUBMITTED
+  APPROVED
+  REJECTED
+}
+
+enum PayoutStatus {
+  PENDING
+  PAID
+}
+
+// ---------------------------------------------------------------------------
+// CORE IDENTITY
+// ---------------------------------------------------------------------------
+
+model Profile {
+  id        String   @id @db.Uuid
+  email     String   @unique
+  fullName  String?  @map("full_name")
+  role      Role     @default(SUBSCRIBER)
+  avatarUrl String?  @map("avatar_url")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  subscriptions         Subscription[]
+  scores                Score[]
+  charityContributions  CharityContribution[]
+  donations             Donation[]
+  drawTickets           DrawTicket[]
+  drawWinners           DrawWinner[]
+  auditLogs             AuditLog[]
+  publishedDraws        Draw[]                 @relation("PublishedBy")
+  reviewedVerifications WinnerVerification[]   @relation("ReviewedBy")
+  paidPayouts           Payout[]               @relation("PaidBy")
+
+  @@map("profiles")
+}
+
+// ---------------------------------------------------------------------------
+// SUBSCRIPTION & PAYMENT
+// ---------------------------------------------------------------------------
+
+model Subscription {
+  id                   String             @id @default(uuid()) @db.Uuid
+  userId               String             @map("user_id") @db.Uuid
+  plan                 SubscriptionPlan
+  status               SubscriptionStatus @default(INCOMPLETE)
+  amountPaise          Int                @map("amount_paise")
+  currency              String            @default("INR")
+  paymentProvider      String             @default("mock") @map("payment_provider")
+  providerCustomerId     String?            @map("provider_customer_id")
+  providerSubscriptionId String?            @unique @map("provider_subscription_id")
+  currentPeriodStart   DateTime?          @map("current_period_start")
+  currentPeriodEnd     DateTime?          @map("current_period_end")
+  cancelAtPeriodEnd    Boolean            @default(false) @map("cancel_at_period_end")
+  createdAt            DateTime           @default(now()) @map("created_at")
+  updatedAt            DateTime           @updatedAt @map("updated_at")
+
+  user                 Profile                @relation(fields: [userId], references: [id])
+  events               SubscriptionEvent[]
+  charityContributions CharityContribution[]
+
+  @@index([userId])
+  @@index([status])
+  @@map("subscriptions")
+}
+
+model SubscriptionEvent {
+  id             String                @id @default(uuid()) @db.Uuid
+  subscriptionId String                @map("subscription_id") @db.Uuid
+  type           SubscriptionEventType
+  providerEventId String?              @unique @map("provider_event_id")
+  metadata       Json?
+  createdAt      DateTime              @default(now()) @map("created_at")
+
+  subscription Subscription @relation(fields: [subscriptionId], references: [id])
+
+  @@index([subscriptionId])
+  @@map("subscription_events")
+}
+
+// ---------------------------------------------------------------------------
+// CHARITY
+// ---------------------------------------------------------------------------
+
+model Charity {
+  id             String   @id @default(uuid()) @db.Uuid
+  name           String
+  slug           String   @unique
+  summary        String
+  description    String
+  logoUrl        String?  @map("logo_url")
+  coverImageUrl  String?  @map("cover_image_url")
+  websiteUrl     String?  @map("website_url")
+  isFeatured     Boolean  @default(false) @map("is_featured")
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  events               CharityEvent[]
+  contributions        CharityContribution[]
+  donations            Donation[]
+
+  @@map("charities")
+}
+
+model CharityEvent {
+  id          String   @id @default(uuid()) @db.Uuid
+  charityId   String   @map("charity_id") @db.Uuid
+  title       String
+  description String?
+  eventDate   DateTime @map("event_date")
+  location    String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  charity Charity @relation(fields: [charityId], references: [id], onDelete: Cascade)
+
+  @@index([charityId])
+  @@map("charity_events")
+}
+
+/// One row per (subscription, billing period): records how much of that
+/// period's subscription fee was directed to the user's chosen charity.
+model CharityContribution {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  subscriptionId String   @map("subscription_id") @db.Uuid
+  charityId      String   @map("charity_id") @db.Uuid
+  percentage     Decimal  @db.Decimal(5, 2)
+  amountPaise    Int      @map("amount_paise")
+  periodStart    DateTime @map("period_start")
+  periodEnd      DateTime @map("period_end")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  user         Profile      @relation(fields: [userId], references: [id])
+  subscription Subscription @relation(fields: [subscriptionId], references: [id])
+  charity      Charity      @relation(fields: [charityId], references: [id])
+
+  @@unique([subscriptionId, periodStart])
+  @@index([charityId])
+  @@index([userId])
+  @@map("charity_contributions")
+}
+
+/// Independent donation, not tied to subscription/gameplay.
+model Donation {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  charityId   String   @map("charity_id") @db.Uuid
+  amountPaise Int      @map("amount_paise")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user    Profile @relation(fields: [userId], references: [id])
+  charity Charity @relation(fields: [charityId], references: [id])
+
+  @@index([charityId])
+  @@index([userId])
+  @@map("donations")
+}
+
+// ---------------------------------------------------------------------------
+// SCORES (Stableford, rolling window of 5)
+// ---------------------------------------------------------------------------
+
+model Score {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  strokes   Int
+  playedOn  DateTime @map("played_on") @db.Date
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user Profile @relation(fields: [userId], references: [id])
+
+  @@unique([userId, playedOn])
+  @@index([userId])
+  @@map("scores")
+}
+
+// ---------------------------------------------------------------------------
+// DRAW ENGINE
+// ---------------------------------------------------------------------------
+
+/// Global/editable configuration the admin sets before running a draw.
+model DrawConfiguration {
+  id                String     @id @default(uuid()) @db.Uuid
+  method            DrawMethod @default(RANDOM)
+  tier5PoolPct      Decimal    @default(40) @db.Decimal(5, 2) @map("tier5_pool_pct")
+  tier4PoolPct      Decimal    @default(35) @db.Decimal(5, 2) @map("tier4_pool_pct")
+  tier3PoolPct      Decimal    @default(25) @db.Decimal(5, 2) @map("tier3_pool_pct")
+  prizePoolPctOfSub Decimal    @default(20) @db.Decimal(5, 2) @map("prize_pool_pct_of_subscription")
+  isActive          Boolean    @default(true) @map("is_active")
+  createdAt         DateTime   @default(now()) @map("created_at")
+
+  @@map("draw_configurations")
+}
+
+/// A published (or in-progress) monthly draw. Once status = PUBLISHED, the
+/// row and its winners/tickets are treated as immutable by the application
+/// layer (enforced in the service layer, not just convention).
+model Draw {
+  id                     String     @id @default(uuid()) @db.Uuid
+  periodLabel            String     @unique @map("period_label") // e.g. "2026-09"
+  method                 DrawMethod
+  status                 DrawStatus @default(DRAFT)
+  eligibleSubscriberCount Int?      @map("eligible_subscriber_count")
+  prizePoolPaise         Int?       @map("prize_pool_paise")
+  tier5PoolPaise         Int?       @map("tier5_pool_paise")
+  tier4PoolPaise         Int?       @map("tier4_pool_paise")
+  tier3PoolPaise         Int?       @map("tier3_pool_paise")
+  jackpotRolloverInPaise Int        @default(0) @map("jackpot_rollover_in_paise")
+  jackpotRolloverOutPaise Int?      @map("jackpot_rollover_out_paise")
+  winningNumbers         Int[]      @map("winning_numbers")
+  seed                   String?
+  publishedAt            DateTime?  @map("published_at")
+  publishedById          String?    @map("published_by") @db.Uuid
+  createdAt              DateTime   @default(now()) @map("created_at")
+  updatedAt              DateTime   @updatedAt @map("updated_at")
+
+  publishedBy  Profile?         @relation("PublishedBy", fields: [publishedById], references: [id])
+  simulations  DrawSimulation[]
+  tickets      DrawTicket[]
+  winners      DrawWinner[]
+
+  @@map("draws")
+}
+
+/// Ephemeral, non-authoritative simulation runs. Never read by
+/// publish/ticket/winner logic — purely for admin preview.
+model DrawSimulation {
+  id            String   @id @default(uuid()) @db.Uuid
+  drawId        String   @map("draw_id") @db.Uuid
+  runById       String   @map("run_by") @db.Uuid
+  seed          String
+  winningNumbers Int[]   @map("winning_numbers")
+  resultSummary Json     @map("result_summary")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  draw Draw @relation(fields: [drawId], references: [id], onDelete: Cascade)
+
+  @@index([drawId])
+  @@map("draw_simulations")
+}
+
+/// Snapshot of each eligible subscriber's 5-number ticket at draw-prep time
+/// (derived from their 5 most recent scores). Stored so results stay
+/// reproducible even if the user later edits their scores.
+model DrawTicket {
+  id        String   @id @default(uuid()) @db.Uuid
+  drawId    String   @map("draw_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  numbers   Int[]
+  weight    Int      @default(1)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  draw    Draw         @relation(fields: [drawId], references: [id], onDelete: Cascade)
+  user    Profile      @relation(fields: [userId], references: [id])
+  winners DrawWinner[]
+
+  @@unique([drawId, userId])
+  @@index([drawId])
+  @@map("draw_tickets")
+}
+
+model DrawWinner {
+  id               String    @id @default(uuid()) @db.Uuid
+  drawId           String    @map("draw_id") @db.Uuid
+  userId           String    @map("user_id") @db.Uuid
+  ticketId         String    @map("ticket_id") @db.Uuid
+  matchTier        MatchTier @map("match_tier")
+  prizeAmountPaise Int       @map("prize_amount_paise")
+  createdAt        DateTime  @default(now()) @map("created_at")
+
+  draw         Draw                @relation(fields: [drawId], references: [id])
+  user         Profile             @relation(fields: [userId], references: [id])
+  ticket       DrawTicket          @relation(fields: [ticketId], references: [id])
+  verification WinnerVerification?
+  payout       Payout?
+
+  @@index([drawId])
+  @@index([userId])
+  @@map("draw_winners")
+}
+
+// ---------------------------------------------------------------------------
+// WINNER VERIFICATION & PAYOUTS
+// ---------------------------------------------------------------------------
+
+model WinnerVerification {
+  id            String              @id @default(uuid()) @db.Uuid
+  drawWinnerId  String              @unique @map("draw_winner_id") @db.Uuid
+  status        VerificationStatus  @default(AWAITING_PROOF)
+  proofFilePath String?             @map("proof_file_path")
+  reviewNotes   String?             @map("review_notes")
+  reviewedById  String?             @map("reviewed_by") @db.Uuid
+  reviewedAt    DateTime?           @map("reviewed_at")
+  createdAt     DateTime            @default(now()) @map("created_at")
+  updatedAt     DateTime            @updatedAt @map("updated_at")
+
+  drawWinner DrawWinner @relation(fields: [drawWinnerId], references: [id])
+  reviewedBy Profile?   @relation("ReviewedBy", fields: [reviewedById], references: [id])
+
+  @@map("winner_verifications")
+}
+
+model Payout {
+  id           String       @id @default(uuid()) @db.Uuid
+  drawWinnerId String       @unique @map("draw_winner_id") @db.Uuid
+  status       PayoutStatus @default(PENDING)
+  amountPaise  Int          @map("amount_paise")
+  paidById     String?      @map("paid_by") @db.Uuid
+  paidAt       DateTime?    @map("paid_at")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+
+  drawWinner DrawWinner @relation(fields: [drawWinnerId], references: [id])
+  paidBy     Profile?   @relation("PaidBy", fields: [paidById], references: [id])
+
+  @@map("payouts")
+}
+
+// ---------------------------------------------------------------------------
+// AUDIT
+// ---------------------------------------------------------------------------
+
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  actorId    String?  @map("actor_id") @db.Uuid
+  actorRole  Role?    @map("actor_role")
+  action     String
+  entityType String   @map("entity_type")
+  entityId   String?  @map("entity_id")
+  metadata   Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  actor Profile? @relation(fields: [actorId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([actorId])
+  @@map("audit_logs")
+}
